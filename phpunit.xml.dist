@@ -12,6 +12,7 @@
   </testsuites>
   <php>
     <server name="FOO" value="bar"/>
-    <env name="foo" value="bar"/>
+    <env name="senderCompID" value="example"/>
+    <env name="password" value="example"/>
   </php>
 </phpunit>
