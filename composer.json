@@ -1,0 +1,22 @@
+{
+    "name": "dprmc/glmx-fix-client",
+    "description": "A PHP client library to connect to the GLMX Fix system.",
+    "type": "library",
+    "require-dev": {
+        "phpunit/phpunit": "^12.2"
+    },
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Dprmc\\GlmxFixClient\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Michael Drennen",
+            "email": "michaeldrennen74@gmail.com"
+        }
+    ],
+    "minimum-stability": "stable",
+    "require": {}
+}
