@@ -249,6 +249,26 @@ class GLMXFixClient {
 
 
     /**
+     * Sends a Heartbeat (0) message to the GLMX server.
+     * @param string|null $testReqId Optional. The TestReqID (112) to include if responding to a TestRequest.
+     * @return void
+     * @throws \Exception If the connection is not established or message sending fails.
+     */
+    public function sendHeartbeat(?string $testReqId = null): void
+    {
+        echo "Sending Heartbeat (0) message...\n";
+
+        $heartbeatFields = [];
+        if ($testReqId !== null) {
+            $heartbeatFields['112'] = $testReqId; // TestReqID
+        }
+
+        $message = $this->generateFixMessage('0', $heartbeatFields); [cite: 36]
+        $this->sendRaw($message);
+    }
+
+
+    /**
      * @return void
      */
     public function disconnect(): void {
