@@ -3,6 +3,7 @@
 namespace DPRMC\GLMXFixClient;
 class GLMXFixClient {
 
+    const SOH = "\x01"; // ASCII 01 character
 
     protected string $senderCompID;
     protected string $password;
@@ -13,7 +14,6 @@ class GLMXFixClient {
     protected string $beginString;
     protected string $socketUseSSL;
     protected string $enabledProtocols;
-
 
     protected array $config = [
         'ConnectionType'    => NULL,
@@ -31,6 +31,8 @@ class GLMXFixClient {
      * @var false|resource
      */
     protected $socket;
+
+    protected int $nextOutgoingMsgSeqNum = 1;
 
 
     public function __construct( string $senderCompID = 'EXAMPLE',
@@ -124,11 +126,136 @@ class GLMXFixClient {
 
 
     /**
-     * @return void
+     * Sends a raw message over the socket.
+     * @param string $message The message to send.
+     * @return int|false Number of bytes written or false on failure.
      */
-    public function disconnect(): void {
-        fclose( $this->socket );
+    protected function sendRaw( string $message ): int|false {
+        if ( !$this->socket ) {
+            throw new \Exception( "Socket not connected." );
+        }
+        $bytesWritten = fwrite( $this->socket, $message );
+        if ( $bytesWritten === false ) {
+            throw new \Exception( "Failed to write to socket." );
+        }
+        echo "Sent: " . str_replace( self::SOH, '|', $message ) . "\n";
+        return $bytesWritten;
+    }
+
+    /**
+     * Reads raw data from the socket.
+     * @param int $length The maximum number of bytes to read.
+     * @return string|false The read data or false on error/EOF.
+     */
+    public function readRaw( int $length = 2048 ): string|false {
+        if ( !$this->socket ) {
+            throw new \Exception( "Socket not connected." );
+        }
+        // Set the socket to non-blocking mode for reading to avoid indefinite waits.
+        stream_set_blocking($this->socket, false);
+        $data = fread( $this->socket, $length );
+        if ( $data !== false && $data !== '' ) {
+            echo "Received: " . str_replace( self::SOH, '|', $data ) . "\n";
+        }
+        return $data;
+    }
+
+    /**
+     * Calculates the BodyLength (tag 9) of a FIX message.
+     * @param string $messageBody The part of the message from tag 35 up to (but not including) tag 10.
+     * @return int
+     */
+    protected function calculateBodyLength( string $messageBody ): int {
+        return strlen( $messageBody );
+    }
+
+    /**
+     * Calculates the CheckSum (tag 10) of a FIX message.
+     * @param string $message The entire FIX message string up to (but not including) the CheckSum field.
+     * @return string Three-character checksum, 0-padded if necessary.
+     */
+    protected function calculateCheckSum( string $message ): string {
+        $sum = 0;
+        for ( $i = 0; $i < strlen( $message ); $i++ ) {
+            $sum += ord( $message[ $i ] );
+        }
+        return str_pad( (string)( $sum % 256 ), 3, '0', STR_PAD_LEFT );
+    }
+
+    /**
+     * Generates a complete FIX message string.
+     * @param string $msgType The MsgType (tag 35).
+     * @param array<string, string> $fields An associative array of FIX tags and their values (excluding header and trailer).
+     * @return string The complete FIX message.
+     */
+    protected function generateFixMessage( string $msgType, array $fields = [] ): string {
+        $headerFields = [
+            '8'  => $this->beginString, // BeginString
+            '35' => $msgType,            // MsgType
+            '49' => $this->senderCompID, // SenderCompID
+            '56' => $this->targetCompID, // TargetCompID
+            '34' => (string)$this->nextOutgoingMsgSeqNum, // MsgSeqNum
+            '52' => gmdate( 'Ymd-H:i:s.v' ), // SendingTime (UTC timestamp)
+        ];
+
+        // Combine all fields for the body length and checksum calculation
+        $allFields = [];
+        foreach ( $headerFields as $tag => $value ) {
+            if ($tag != '8' && $tag != '9') { // Exclude BeginString and BodyLength from this part of assembly
+                $allFields[] = $tag . '=' . $value;
+            }
+        }
+        foreach ( $fields as $tag => $value ) {
+            $allFields[] = $tag . '=' . $value;
+        }
+
+        $bodyContent = implode( self::SOH, $allFields ) . self::SOH;
+        $bodyLength = $this->calculateBodyLength( $bodyContent ); // BodyLength is calculated *after* MsgType
+
+        // Now assemble the full message including BodyLength
+        $fullMessage = "8=" . $this->beginString . self::SOH;
+        $fullMessage .= "9=" . $bodyLength . self::SOH;
+        $fullMessage .= $bodyContent; // This includes MsgType, SenderCompID, etc.
+
+        $checksum = $this->calculateCheckSum( $fullMessage ); // Checksum is calculated over entire message before it
+        $fullMessage .= "10=" . $checksum . self::SOH;
+
+        $this->nextOutgoingMsgSeqNum++; // Increment sequence number for next message
+
+        return $fullMessage;
     }
 
 
+    /**
+     * Initiates a FIX session by sending a Logon (A) message.
+     * @return void
+     * @throws \Exception If the connection is not established or message sending fails.
+     */
+    public function login(): void {
+        echo "Sending Logon (A) message...\n";
+
+        // Fields specific to the Logon message
+        $logonFields = [
+            '108' => (string)$this->heartBtInt, // HeartBtInt
+            '554' => $this->password,           // Password
+        ];
+
+        $message = $this->generateFixMessage( 'A', $logonFields );
+        $this->sendRaw( $message );
+
+        // In a real FIX client, you would now wait for a Logon (A) response from GLMX
+        // and then a TestRequest (1) message, and send a Heartbeat (0) in return.
+    }
+
+
+    /**
+     * @return void
+     */
+    public function disconnect(): void {
+        if ($this->socket) {
+            fclose( $this->socket );
+            $this->socket = null; // Clear the socket resource
+            echo "Disconnected from FIX server.\n";
+        }
+    }
 }

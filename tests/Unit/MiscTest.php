@@ -25,6 +25,8 @@ class MiscTest extends TestCase {
 
         $client->connect();
 
+        $client->login();
+
         $client->disconnect();
     }
 
