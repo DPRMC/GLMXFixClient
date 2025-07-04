@@ -263,7 +263,7 @@ class GLMXFixClient {
             $heartbeatFields['112'] = $testReqId; // TestReqID
         }
 
-        $message = $this->generateFixMessage('0', $heartbeatFields); [cite: 36]
+        $message = $this->generateFixMessage('0', $heartbeatFields); //[cite: 36]
         $this->sendRaw($message);
     }
 
