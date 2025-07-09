@@ -29,6 +29,9 @@ class GLMXFixClient {
     protected FixMessageParser $parser;
 
 
+    protected bool $running = true;
+
+
     public function __construct( string $senderCompID = 'EXAMPLE',
                                  string $password = '<PASSWORD>',
                                  string $socketConnectHost = 'fixgw.stg.glmx.com',
@@ -38,7 +41,6 @@ class GLMXFixClient {
                                  string $beginString = 'FIX.4.4',
                                  bool   $socketUseSSL = TRUE,
                                  string $enabledProtocols = 'TLSv1.2' ) {
-
         $this->senderCompID      = $senderCompID;
         $this->password          = $password;
         $this->socketConnectHost = $socketConnectHost;
@@ -51,10 +53,6 @@ class GLMXFixClient {
 
         // Initialize the parser here
         $this->parser = new FixMessageParser( $this->beginString );
-
-
-        // DEBUG
-        //$this->socketConnectHost = '98.245.102.80';
     }
 
 
@@ -91,15 +89,15 @@ class GLMXFixClient {
         );
 
         // 4. Check if the connection was successful
-        if ( $this->socket === FALSE ) {
+        if ( $this->socket === FALSE ):
             throw new Exception( "Failed to connect: ($errno) $errstr" );
-        }
+        endif;
 
         // 5. Set the stream to non-blocking mode
-        if ( !stream_set_blocking( $this->socket, FALSE ) ) {
+        if ( !stream_set_blocking( $this->socket, FALSE ) ):
             fclose( $this->socket );
             throw new Exception( "Failed to set stream to non-blocking mode." );
-        }
+        endif;
 
         echo "Connection successful! Stream socket obtained.\n";
     }
@@ -121,15 +119,14 @@ class GLMXFixClient {
      * @return int|false Number of bytes written or false on failure.
      */
     protected function sendRaw( string $message ): int|false {
-        if ( !$this->socket ) {
+        if ( !$this->socket ):
             throw new Exception( "Socket not connected." );
-        }
+        endif;
         $bytesWritten = @fwrite( $this->socket, $message );
-        if ( $bytesWritten === FALSE ) {
+        if ( $bytesWritten === FALSE ):
             throw new Exception( "Failed to write to socket." );
-        }
+        endif;
         echo "Sent: " . str_replace( self::SOH, '|', $message ) . "\n";
-
         return $bytesWritten;
     }
 
@@ -141,14 +138,14 @@ class GLMXFixClient {
      * @return string|false The read data or false on error/EOF.
      */
     public function readRaw( int $length = 2048 ): string|false {
-        if ( !$this->socket ) {
+        if ( !$this->socket ):
             throw new Exception( "Socket not connected." );
-        }
+        endif;
         $data = @fread( $this->socket, $length );
-        if ( $data !== FALSE && $data !== '' ) {
+        if ( $data !== FALSE && $data !== '' ):
             echo "Received RAW (ASCII): '" . str_replace( self::SOH, '[SOH]', $data ) . "'\n";
             echo "Received RAW (HEX):   '" . bin2hex( $data ) . "'\n";
-        }
+        endif;
         return $data;
     }
 
@@ -172,9 +169,9 @@ class GLMXFixClient {
      */
     protected function calculateCheckSum( string $message ): string {
         $sum = 0;
-        for ( $i = 0; $i < strlen( $message ); $i++ ) {
+        for ( $i = 0; $i < strlen( $message ); $i++ ):
             $sum += ord( $message[ $i ] );
-        }
+        endfor;
         return str_pad( (string)($sum % 256), 3, '0', STR_PAD_LEFT );
     }
 
@@ -187,31 +184,61 @@ class GLMXFixClient {
      * @return string The complete FIX message.
      */
     protected function generateFixMessage( string $msgType, array $fields = [] ): string {
-        $headerFields = [
-            '8'  => $this->beginString, // BeginString
-            '35' => $msgType,            // MsgType
-            '49' => $this->senderCompID, // SenderCompID
-            '56' => $this->targetCompID, // TargetCompID
-            '34' => (string)$this->nextOutgoingMsgSeqNum, // MsgSeqNum
-            '52' => gmdate( 'Ymd-H:i:s.v' ), // SendingTime (UTC timestamp)
+        // Standard FIX header field order (relevant for MsgType 'A' to 'Z' excluding '8' and '9' which are inserted dynamically)
+        // See: https://www.fixtrading.org/standards/tagvalue-online/
+        $standardHeaderOrder = [
+            '35', // MsgType
+            '34', // MsgSeqNum
+            '49', // SenderCompID
+            '52', // SendingTime
+            '56', // TargetCompID
+            '98', //
+            // Add other standard header fields here if needed, in their numerical order
         ];
 
-        $allFields = [];
-        foreach ( $headerFields as $tag => $value ) {
-            if ( $tag != '8' && $tag != '9' ) {
-                $allFields[] = $tag . '=' . $value;
-            }
-        }
-        foreach ( $fields as $tag => $value ) {
-            $allFields[] = $tag . '=' . $value;
-        }
+        $headerFields = [];
+        foreach ( $standardHeaderOrder as $tag ):
+            // Populate header fields from class properties
+            switch ( $tag ):
+                case '35':
+                    $headerFields[ $tag ] = $msgType;
+                    break;
+                case '34':
+                    $headerFields[ $tag ] = (string)$this->nextOutgoingMsgSeqNum;
+                    break;
+                case '49':
+                    $headerFields[ $tag ] = $this->senderCompID;
+                    break;
+                case '52':
+                    $headerFields[ $tag ] = gmdate( 'Ymd-H:i:s.v' );
+                    break; // UTC timestamp
+                case '56':
+                    $headerFields[ $tag ] = $this->targetCompID;
+                    break;
+                case '98':
+                    $headerFields[ $tag ] = '0';
+                    break;
+            endswitch;
+        endforeach;
 
-        $bodyContent = implode( self::SOH, $allFields ) . self::SOH;
-        $bodyLength  = $this->calculateBodyLength( $bodyContent );
+        // Add any message-specific fields from the $fields array
+        // Order of application-level fields generally doesn't matter as strictly as header fields
+        foreach ( $fields as $tag => $value ):
+            $headerFields[ $tag ] = $value;
+        endforeach;
 
+
+        $bodyContent = '';
+        foreach ( $headerFields as $tag => $value ):
+            $bodyContent .= $tag . '=' . $value . self::SOH;
+        endforeach;
+
+        $bodyLength = $this->calculateBodyLength( $bodyContent );
+
+        // Assemble the full message with BeginString, BodyLength, then the rest of the body, and finally CheckSum
         $fullMessage = "8=" . $this->beginString . self::SOH;
         $fullMessage .= "9=" . $bodyLength . self::SOH;
-        $fullMessage .= $bodyContent;
+        $fullMessage .= $bodyContent; // This now includes MsgType, MsgSeqNum, SenderCompID, SendingTime, TargetCompID, and other app fields.
 
         $checksum    = $this->calculateCheckSum( $fullMessage );
         $fullMessage .= "10=" . $checksum . self::SOH;
@@ -225,18 +252,21 @@ class GLMXFixClient {
     /**
      * Initiates a FIX session by sending a Logon (A) message and waiting for confirmation.
      *
-     * @return bool True if logon successful and session handshake complete, false otherwise.
+     * @return float Microtime timestamp when the last message was sent during handshake, or throws exception.
      * @throws \Exception If connection is not established, message sending fails, or handshake times out/fails.
      */
-    public function login(): bool {
+    public function login(): float {
         echo "Sending Logon (A) message...\n";
 
         $logonFields = [
             '108' => (string)$this->heartBtInt, // HeartBtInt
             '554' => $this->password,           // Password
+            //'98'  => '0',                       // EncryptMethod = None (as required by GLMX admin)
         ];
 
         $message = $this->generateFixMessage( 'A', $logonFields );
+
+        //dd($message);
         $this->sendRaw( $message );
 
         $logonAckReceived    = FALSE;
@@ -247,83 +277,79 @@ class GLMXFixClient {
 
         echo "Waiting for Logon Acknowledge and TestRequest...\n";
 
-        while ( microtime( TRUE ) - $startTime < $timeout && (!$logonAckReceived || !$testRequestReceived) ) {
-
-
-            dump(stream_get_meta_data($this->getSocketResource()));
+        while ( microtime( TRUE ) - $startTime < $timeout && (!$logonAckReceived || !$testRequestReceived) ):
             $read_streams   = [ $this->socket ];
             $write_streams  = NULL;
             $except_streams = NULL;
 
-            // Wait for activity on the stream, up to 1 second
             $num_changed_streams = @stream_select( $read_streams, $write_streams, $except_streams, 1 );
 
-            if ( $num_changed_streams === FALSE ) {
+            if ( $num_changed_streams === FALSE ):
                 throw new Exception( "stream_select error during login." );
-            }
+            endif;
 
-            if ( $num_changed_streams > 0 && in_array( $this->socket, $read_streams ) ) {
+            if ( $num_changed_streams > 0 && in_array( $this->socket, $read_streams ) ):
                 $rawData = $this->readRaw();
-                if ( $rawData === FALSE ) { // false indicates an actual read error, not just no data
+                if ( $rawData === FALSE ):
                     throw new Exception( "Connection read error during login handshake." );
-                }
-                if ( $rawData === '' ) { // empty string indicates no data immediately available in non-blocking mode
-                    // This is expected, continue waiting
+                endif;
+                if ( $rawData === '' ):
                     //echo "No raw data immediately available, continuing select.\n";
                     continue;
-                }
-
-                var_dump( $rawData);
+                endif;
 
                 echo "Raw data received during login. Appending to parser...\n";
                 $this->parser->appendData( $rawData );
 
                 try {
-                    while ( ($parsedMessage = $this->parser->parseNextMessage()) !== NULL ) {
+                    while ( ($parsedMessage = $this->parser->parseNextMessage()) !== NULL ):
                         echo "--- Message Parsed During Login Handshake ---\n";
                         print_r( $parsedMessage );
 
-                        if ( isset( $parsedMessage[ '35' ] ) ) {
-                            $msgType = $parsedMessage[ '35' ];
-                            if ( $msgType === 'A' ) { // Logon Acknowledge
-                                $logonAckReceived = TRUE;
-                                echo "Logon Acknowledge received.\n";
-                            } elseif ( $msgType === '1' ) { // TestRequest
-                                $testRequestReceived = TRUE;
-                                if ( isset( $parsedMessage[ '112' ] ) ) {
-                                    $testReqId = $parsedMessage[ '112' ];
-                                    echo "TestRequest received with ID: " . $testReqId . ".\n";
-                                } else {
-                                    echo "TestRequest received without ID.\n";
-                                }
-                            }
-                        }
+
+                        if ( !isset( $parsedMessage[ '35' ] ) ):
+                            continue;
+                        endif;
+
+
+                        $msgType = $parsedMessage[ '35' ];
+                        if ( $msgType === 'A' ): // Logon Acknowledge
+                            $logonAckReceived = TRUE;
+                            echo "Logon Acknowledge received.\n";
+                        elseif ( $msgType === '1' ): // TestRequest
+                            $testRequestReceived = TRUE;
+                            if ( isset( $parsedMessage[ '112' ] ) ):
+                                $testReqId = $parsedMessage[ '112' ];
+                                echo "TestRequest received with ID: " . $testReqId . ".\n";
+                            else:
+                                echo "TestRequest received without ID.\n";
+                            endif;
+                        endif;
+
                         echo "-------------------------------------------\n";
-                    }
+                    endwhile;
                 } catch ( Exception $e ) {
                     echo "Parsing error during login: " . $e->getMessage() . "\n";
-                    echo "Current parser buffer content (HEX): " . bin2hex( $this->parser->getBuffer() ) . "\n"; // Get buffer content from parser for debugging
-                    // It's crucial to debug FixMessageParser if this happens.
+                    echo "Current parser buffer content (HEX): " . bin2hex( $this->parser->getBuffer() ) . "\n";
                 }
-            }
+            endif;
 
-            // If TestRequest is received and we haven't responded yet
-            if ( $logonAckReceived && $testRequestReceived && $testReqId !== NULL ) {
+            if ( $logonAckReceived && $testRequestReceived && $testReqId !== NULL ):
                 echo "Logon handshake complete: Responding to TestRequest with Heartbeat...\n";
                 $this->sendHeartbeat( $testReqId );
-                return TRUE;
-            }
-        }
+                return microtime( TRUE ); // Return current microtime after sending heartbeat
+            endif;
+        endwhile;
 
-        // If we exit the loop without completing the handshake
-        if ( !($logonAckReceived && $testRequestReceived) ) {
+
+        if ( !($logonAckReceived && $testRequestReceived) ):
             $reason = '';
-            if ( !$logonAckReceived ) $reason .= "No Logon Acknowledge received. ";
-            if ( !$testRequestReceived ) $reason .= "No TestRequest received. ";
+            if ( !$logonAckReceived ): $reason .= "No Logon Acknowledge received. "; endif;
+            if ( !$testRequestReceived ): $reason .= "No TestRequest received. "; endif;
             throw new Exception( "Login handshake failed: " . $reason . "Timeout reached." );
-        }
+        endif;
 
-        return FALSE; // Should not reach here if successful
+        return microtime( TRUE ); // Fallback return if somehow control reaches here (should not for success)
     }
 
     /**
@@ -338,9 +364,9 @@ class GLMXFixClient {
         echo "Sending Heartbeat (0) message...\n";
 
         $heartbeatFields = [];
-        if ( $testReqId !== NULL ) {
-            $heartbeatFields[ '112' ] = $testReqId;
-        }
+        if ( $testReqId !== NULL ):
+            $heartbeatFields[ '112' ] = $testReqId; // TestReqID
+        endif;
 
         $message = $this->generateFixMessage( '0', $heartbeatFields );
         $this->sendRaw( $message );
@@ -357,12 +383,12 @@ class GLMXFixClient {
     public function sendTestRequest( ?string $testReqId = NULL ): string {
         echo "Sending TestRequest (1) message...\n";
 
-        if ( $testReqId === NULL ) {
+        if ( $testReqId === NULL ):
             $testReqId = 'TESTREQ-' . time() . '-' . uniqid();
-        }
+        endif;
 
         $testRequestFields = [
-            '112' => $testReqId,
+            '112' => $testReqId, // TestReqID
         ];
 
         $message = $this->generateFixMessage( '1', $testRequestFields );
@@ -376,10 +402,77 @@ class GLMXFixClient {
      * @return void
      */
     public function disconnect(): void {
-        if ( $this->socket ) {
+        if ( $this->socket ):
             fclose( $this->socket );
-            $this->socket = null;
+            $this->socket = NULL;
             echo "Disconnected from FIX server.\n";
+        endif;
+    }
+
+
+    protected function _setRunning( bool $running ) {
+        $this->running = $running;
+    }
+
+    public function isRunning(): bool {
+        return $this->running;
+    }
+
+
+
+    public function getMessage(){
+
+        if( false === $this->isRunning() ):
+            throw new Exception( "Client is not running." );
+        endif;
+
+
+        $read_sockets   = [ $client->getSocketResource() ]; // Get the raw socket resource
+        $write_sockets  = NULL;
+        $except_sockets = NULL;
+
+
+
+        // Use stream_select to wait for data or timeout for periodic actions
+        // Timeout is set to a short interval (e.g., 1 second) or remaining time till next heartbeat
+        $timeout = $this->heartBtInt - (time() - $lastSentActivity);
+        if ( $timeout < 1 ) $timeout = 1; // Don't block indefinitely if heartbeat is due
+
+        $num_changed_sockets = @stream_select( $read_sockets,
+                                               $write_sockets,
+                                               $except_sockets,
+                                               $timeout );
+
+        if ( $num_changed_sockets === FALSE ) {
+            echo "stream_select error: " . error_get_last()[ 'message' ] . "\n";
+            return;
         }
+
+        // --- Handle Incoming Data ---
+        if ( $num_changed_sockets > 0 && in_array( $client->getSocketResource(), $read_sockets ) ) {
+            $rawData = $client->readRaw();
+
+            if ( $rawData === FALSE || $rawData === '' ) {
+                // Connection closed or error
+                echo "Connection read error or closed by peer.\n";
+                $running = FALSE;
+                break;
+            }
+            $parser->appendData( $rawData );
+            $lastReceivedActivity = time(); // Update activity time after receiving data
+        }
+
+        // --- Process Parsed Messages ---
+        try {
+            while ( ($parsedMessage = $parser->parseNextMessage()) !== NULL ):
+                return $parsedMessage;
+            endwhile;
+
+
+        } catch ( Exception $e ) {
+            echo "Parsing error: " . $e->getMessage() . "\n";
+            // In a production system, you'd log this error and potentially take recovery actions
+        }
+
     }
 }
