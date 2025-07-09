@@ -34,8 +34,8 @@ class GLMXFixClient {
     protected FixMessageParser $parser;
 
 
-    protected bool  $running          = TRUE;
-    protected int $lastSentActivity;
+    protected bool $running = TRUE;
+    protected int  $lastSentActivity;
 
     protected bool $debug = FALSE;
     protected int  $lastReceivedActivity;
@@ -480,7 +480,7 @@ class GLMXFixClient {
             if ( $rawData === FALSE || $rawData === '' ):
                 // Connection closed or error
                 $this->_debug( "Connection read error or closed by peer." );
-                $this->_setRunning(false);
+                $this->_setRunning( FALSE );
                 throw new ConnectionClosedByPeerException();
             endif;
 
@@ -490,7 +490,9 @@ class GLMXFixClient {
         }
 
         // --- Process Parsed Messages ---
-        return $this->parser->parseNextMessage();
+        $content = $this->parser->parseNextMessage();
+
+        return new FixMessage( $content );
     }
 
 
