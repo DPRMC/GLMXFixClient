@@ -2,6 +2,7 @@
 
 namespace DPRMC\GLMXFixClient;
 
+use DPRMC\GLMXFixClient\Exceptions\ParseException;
 use Exception;
 
 class FixMessageParser
@@ -29,7 +30,7 @@ class FixMessageParser
     /**
      * Attempts to extract and parse the next complete FIX message from the buffer.
      * @return array|null An associative array of parsed FIX tags and values, or null if no complete message is found.
-     * @throws Exception If a message is malformed or checksum is invalid.
+     * @throws ParseException If a message is malformed or checksum is invalid.
      */
     public function parseNextMessage(): ?array
     {
@@ -76,7 +77,7 @@ class FixMessageParser
         if (!is_numeric($bodyLengthStr) || $bodyLength < 0) {
             // Malformed BodyLength. Discard current buffer segment to avoid infinite loop.
             $this->buffer = substr($this->buffer, $bodyLengthEndPos + 1);
-            throw new Exception("Malformed BodyLength in FIX message.");
+            throw new ParseException("Malformed BodyLength in FIX message.");
         }
 
         // The BodyLength (9) field itself is immediately followed by the MsgType (35) field.
@@ -105,7 +106,7 @@ class FixMessageParser
             // This is a common error point in partial message reception.
             // Discard the potentially problematic message part.
             $this->buffer = substr($this->buffer, $checkSumTagStartPos + 1); // Move past what we thought was the end
-            throw new Exception("Expected CheckSum tag '10=' not found at calculated position.");
+            throw new ParseException("Expected CheckSum tag '10=' not found at calculated position.");
         }
 
         $checkSumEndPos = strpos($this->buffer, $soh, $checkSumTagStartPos);
@@ -126,7 +127,7 @@ class FixMessageParser
         if ($calculatedCheckSum !== $checkSumValue) {
             // Checksum mismatch. Message is corrupted. Discard.
             $this->buffer = substr($this->buffer, $fullMessageLength);
-            throw new Exception("Checksum mismatch. Expected: {$calculatedCheckSum}, Received: {$checkSumValue}");
+            throw new ParseException("Checksum mismatch. Expected: {$calculatedCheckSum}, Received: {$checkSumValue}");
         }
 
         // 5. Parse the complete message into an array

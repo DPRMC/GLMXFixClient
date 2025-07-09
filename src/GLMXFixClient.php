@@ -2,6 +2,11 @@
 
 namespace DPRMC\GLMXFixClient;
 
+use DPRMC\GLMXFixClient\Exceptions\ClientNotRunningException;
+use DPRMC\GLMXFixClient\Exceptions\ConnectionClosedByPeerException;
+use DPRMC\GLMXFixClient\Exceptions\ParseException;
+use DPRMC\GLMXFixClient\Exceptions\SocketNotConnectedException;
+use DPRMC\GLMXFixClient\Exceptions\StreamSelectException;
 use Exception;
 
 class GLMXFixClient {
@@ -29,7 +34,11 @@ class GLMXFixClient {
     protected FixMessageParser $parser;
 
 
-    protected bool $running = true;
+    protected bool  $running          = TRUE;
+    protected int $lastSentActivity;
+
+    protected bool $debug = FALSE;
+    protected int  $lastReceivedActivity;
 
 
     public function __construct( string $senderCompID = 'EXAMPLE',
@@ -111,12 +120,14 @@ class GLMXFixClient {
         return $this->socket;
     }
 
+
     /**
      * Sends a raw message over the socket.
      *
      * @param string $message The message to send.
      *
      * @return int|false Number of bytes written or false on failure.
+     * @throws \Exception
      */
     protected function sendRaw( string $message ): int|false {
         if ( !$this->socket ):
@@ -127,8 +138,11 @@ class GLMXFixClient {
             throw new Exception( "Failed to write to socket." );
         endif;
         echo "Sent: " . str_replace( self::SOH, '|', $message ) . "\n";
+
+        $this->lastSentActivity = time();
         return $bytesWritten;
     }
+
 
     /**
      * Reads raw data from the socket.
@@ -136,15 +150,16 @@ class GLMXFixClient {
      * @param int $length The maximum number of bytes to read.
      *
      * @return string|false The read data or false on error/EOF.
+     * @throws SocketNotConnectedException
      */
     public function readRaw( int $length = 2048 ): string|false {
         if ( !$this->socket ):
-            throw new Exception( "Socket not connected." );
+            throw new SocketNotConnectedException();
         endif;
         $data = @fread( $this->socket, $length );
         if ( $data !== FALSE && $data !== '' ):
-            echo "Received RAW (ASCII): '" . str_replace( self::SOH, '[SOH]', $data ) . "'\n";
-            echo "Received RAW (HEX):   '" . bin2hex( $data ) . "'\n";
+            $this->_debug( "Received RAW (ASCII): '" . str_replace( self::SOH, '[SOH]', $data ) );
+            $this->_debug( "Received RAW (HEX):   '" . bin2hex( $data ) );
         endif;
         return $data;
     }
@@ -419,60 +434,73 @@ class GLMXFixClient {
     }
 
 
+    /**
+     * @throws \DPRMC\GLMXFixClient\Exceptions\ClientNotRunningException
+     * @throws \DPRMC\GLMXFixClient\Exceptions\StreamSelectException
+     * @throws \Exception
+     */
+    public function getMessage() {
 
-    public function getMessage(){
-
-        if( false === $this->isRunning() ):
-            throw new Exception( "Client is not running." );
+        if ( FALSE === $this->isRunning() ):
+            throw new ClientNotRunningException();
         endif;
 
 
-        $read_sockets   = [ $client->getSocketResource() ]; // Get the raw socket resource
+        $read_sockets   = [ $this->getSocketResource() ]; // Get the raw socket resource
         $write_sockets  = NULL;
         $except_sockets = NULL;
 
 
-
         // Use stream_select to wait for data or timeout for periodic actions
         // Timeout is set to a short interval (e.g., 1 second) or remaining time till next heartbeat
-        $timeout = $this->heartBtInt - (time() - $lastSentActivity);
+        $timeout = $this->heartBtInt - (time() - $this->lastSentActivity);
         if ( $timeout < 1 ) $timeout = 1; // Don't block indefinitely if heartbeat is due
 
+
+        /**
+         * On success stream_select() returns the number of stream resources
+         * contained in the modified arrays, which
+         * may be zero if the timeout expires before anything interesting happens.
+         * On error false is returned, and
+         * a warning raised (this can happen if the system call is interrupted by an incoming signal).
+         */
         $num_changed_sockets = @stream_select( $read_sockets,
                                                $write_sockets,
                                                $except_sockets,
                                                $timeout );
 
-        if ( $num_changed_sockets === FALSE ) {
-            echo "stream_select error: " . error_get_last()[ 'message' ] . "\n";
-            return;
-        }
+        if ( $num_changed_sockets === FALSE ):
+            throw new StreamSelectException( "stream_select error: " . error_get_last()[ 'message' ] );
+        endif;
 
         // --- Handle Incoming Data ---
-        if ( $num_changed_sockets > 0 && in_array( $client->getSocketResource(), $read_sockets ) ) {
-            $rawData = $client->readRaw();
+        if ( $num_changed_sockets > 0 && in_array( $this->getSocketResource(), $read_sockets ) ) {
+            $rawData = $this->readRaw();
 
-            if ( $rawData === FALSE || $rawData === '' ) {
+            if ( $rawData === FALSE || $rawData === '' ):
                 // Connection closed or error
-                echo "Connection read error or closed by peer.\n";
-                $running = FALSE;
-                break;
-            }
-            $parser->appendData( $rawData );
-            $lastReceivedActivity = time(); // Update activity time after receiving data
+                $this->_debug( "Connection read error or closed by peer." );
+                $this->_setRunning(false);
+                throw new ConnectionClosedByPeerException();
+            endif;
+
+
+            $this->parser->appendData( $rawData );
+            $this->lastReceivedActivity = time(); // Update activity time after receiving data
         }
 
         // --- Process Parsed Messages ---
-        try {
-            while ( ($parsedMessage = $parser->parseNextMessage()) !== NULL ):
-                return $parsedMessage;
-            endwhile;
+        return $this->parser->parseNextMessage();
+    }
 
 
-        } catch ( Exception $e ) {
-            echo "Parsing error: " . $e->getMessage() . "\n";
-            // In a production system, you'd log this error and potentially take recovery actions
-        }
+    public function setDebug( bool $debug ) {
+        $this->debug = $debug;
+    }
 
+    protected function _debug( string $message ): void {
+        if ( $this->debug ):
+            echo $message . "\n";
+        endif;
     }
 }
