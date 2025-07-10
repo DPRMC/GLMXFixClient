@@ -2,8 +2,10 @@
 
 namespace DPRMC\GLMXFixClient;
 
+use Carbon\Carbon;
 use DPRMC\GLMXFixClient\Exceptions\ClientNotRunningException;
 use DPRMC\GLMXFixClient\Exceptions\ConnectionClosedByPeerException;
+use DPRMC\GLMXFixClient\Exceptions\NoDataException;
 use DPRMC\GLMXFixClient\Exceptions\ParseException;
 use DPRMC\GLMXFixClient\Exceptions\SocketNotConnectedException;
 use DPRMC\GLMXFixClient\Exceptions\StreamSelectException;
@@ -62,6 +64,32 @@ class GLMXFixClient {
 
         // Initialize the parser here
         $this->parser = new FixMessageParser( $this->beginString );
+
+        $this->lastSentActivity = time();
+    }
+
+
+    /**
+     * @return bool
+     */
+    public function serverIsOpen(): bool {
+        $now        = Carbon::now( 'UTC' );
+        $openAfter  = Carbon::create( $now->year, $now->month, $now->day, 0, 5, 0, 'UTC' );
+        $openBefore = Carbon::create( $now->year, $now->month, $now->day, 23, 45, 0, 'UTC' );
+
+
+        $this->_debug( "Server opens at: " . $openAfter->toDateTimeString() );
+        $this->_debug( "Server closes at: " . $openBefore->toDateTimeString() );
+
+        if ( $now->isBefore( $openAfter ) ):
+            return FALSE;
+        endif;
+
+        if ( $now->isAfter( $openBefore ) ):
+            return FALSE;
+        endif;
+
+        return TRUE;
     }
 
 
@@ -110,6 +138,133 @@ class GLMXFixClient {
 
         echo "Connection successful! Stream socket obtained.\n";
     }
+
+
+    /**
+     * Initiates a FIX session by sending a Logon (A) message and waiting for confirmation.
+     *
+     * @return float Microtime timestamp when the last message was sent during handshake, or throws exception.
+     * @throws \Exception If connection is not established, message sending fails, or handshake times out/fails.
+     */
+    public function login(): float {
+        echo "Sending Logon (A) message...\n";
+
+        $logonFields = [
+            '108' => (string)$this->heartBtInt, // HeartBtInt
+            '554' => $this->password,           // Password
+            //'98'  => '0',                       // EncryptMethod = None (as required by GLMX admin)
+        ];
+
+        $message = $this->generateFixMessage( FixMessage::Logon, $logonFields );
+
+        //dd($message);
+        $this->sendRaw( $message );
+
+        $logonAckReceived    = FALSE;
+        $testRequestReceived = FALSE;
+        $testReqId           = NULL;
+        $startTime           = microtime( TRUE ); // Use microtime for more precise timeout checking
+        $timeout             = 10;                // Max 10 seconds for login handshake
+
+        echo "Waiting for Logon Acknowledge and TestRequest...\n";
+
+        while ( microtime( TRUE ) - $startTime < $timeout && (!$logonAckReceived || !$testRequestReceived) ):
+            $read_streams   = [ $this->socket ];
+            $write_streams  = NULL;
+            $except_streams = NULL;
+
+            $num_changed_streams = @stream_select( $read_streams, $write_streams, $except_streams, 1 );
+
+            if ( $num_changed_streams === FALSE ):
+                throw new Exception( "stream_select error during login." );
+            endif;
+
+            if ( $num_changed_streams > 0 && in_array( $this->socket, $read_streams ) ):
+                $rawData = $this->readRaw();
+                if ( $rawData === FALSE ):
+                    throw new Exception( "Connection read error during login handshake." );
+                endif;
+                if ( $rawData === '' ):
+                    //echo "No raw data immediately available, continuing select.\n";
+                    continue;
+                endif;
+
+                echo "Raw data received during login. Appending to parser...\n";
+                $this->parser->appendData( $rawData );
+
+                try {
+                    while ( ($parsedMessage = $this->parser->parseNextMessage()) !== NULL ):
+                        echo "--- Message Parsed During Login Handshake ---\n";
+                        print_r( $parsedMessage );
+
+
+                        if ( !isset( $parsedMessage[ '35' ] ) ):
+                            continue;
+                        endif;
+
+
+                        $msgType = $parsedMessage[ '35' ];
+                        if ( $msgType === 'A' ): // Logon Acknowledge
+                            $logonAckReceived = TRUE;
+                            echo "Logon Acknowledge received.\n";
+                        elseif ( $msgType === '1' ): // TestRequest
+                            $testRequestReceived = TRUE;
+                            if ( isset( $parsedMessage[ '112' ] ) ):
+                                $testReqId = $parsedMessage[ '112' ];
+                                echo "TestRequest received with ID: " . $testReqId . ".\n";
+                            else:
+                                echo "TestRequest received without ID.\n";
+                            endif;
+                        endif;
+
+                        echo "-------------------------------------------\n";
+                    endwhile;
+                } catch ( Exception $e ) {
+                    echo "Parsing error during login: " . $e->getMessage() . "\n";
+                    echo "Current parser buffer content (HEX): " . bin2hex( $this->parser->getBuffer() ) . "\n";
+                }
+            endif;
+
+            if ( $logonAckReceived && $testRequestReceived && $testReqId !== NULL ):
+                echo "Logon handshake complete: Responding to TestRequest with Heartbeat...\n";
+                $this->sendHeartbeat( $testReqId );
+                return microtime( TRUE ); // Return current microtime after sending heartbeat
+            endif;
+        endwhile;
+
+
+        if ( !($logonAckReceived && $testRequestReceived) ):
+            $reason = '';
+            if ( !$logonAckReceived ): $reason .= "No Logon Acknowledge received. "; endif;
+            if ( !$testRequestReceived ): $reason .= "No TestRequest received. "; endif;
+            throw new Exception( "Login handshake failed: " . $reason . "Timeout reached." );
+        endif;
+
+        return microtime( TRUE ); // Fallback return if somehow control reaches here (should not for success)
+    }
+
+
+    /**
+     * @return void
+     * @throws \Exception
+     *
+     * 8=FIX.4.2^9=79^35=4^49=SellSide^56=BuySide^34=1^52=20250709-17:30:00.000^36=100^10=104^
+     */
+    public function sequenceReset() {
+        //
+        $fields = [
+            '108' => (string)$this->heartBtInt, // HeartBtInt
+            '554' => $this->password,           // Password
+            //'98'  => '0',                       // EncryptMethod = None (as required by GLMX admin)
+        ];
+
+
+        $message = $this->generateFixMessage( FixMessage::SequenceReset, $fields );
+        $this->sendRaw( $message );
+
+        FixMessage::SequenceReset;
+    }
+
 
     /**
      * Returns the raw stream socket resource.
@@ -265,109 +420,6 @@ class GLMXFixClient {
 
 
     /**
-     * Initiates a FIX session by sending a Logon (A) message and waiting for confirmation.
-     *
-     * @return float Microtime timestamp when the last message was sent during handshake, or throws exception.
-     * @throws \Exception If connection is not established, message sending fails, or handshake times out/fails.
-     */
-    public function login(): float {
-        echo "Sending Logon (A) message...\n";
-
-        $logonFields = [
-            '108' => (string)$this->heartBtInt, // HeartBtInt
-            '554' => $this->password,           // Password
-            //'98'  => '0',                       // EncryptMethod = None (as required by GLMX admin)
-        ];
-
-        $message = $this->generateFixMessage( 'A', $logonFields );
-
-        //dd($message);
-        $this->sendRaw( $message );
-
-        $logonAckReceived    = FALSE;
-        $testRequestReceived = FALSE;
-        $testReqId           = NULL;
-        $startTime           = microtime( TRUE ); // Use microtime for more precise timeout checking
-        $timeout             = 10;                // Max 10 seconds for login handshake
-
-        echo "Waiting for Logon Acknowledge and TestRequest...\n";
-
-        while ( microtime( TRUE ) - $startTime < $timeout && (!$logonAckReceived || !$testRequestReceived) ):
-            $read_streams   = [ $this->socket ];
-            $write_streams  = NULL;
-            $except_streams = NULL;
-
-            $num_changed_streams = @stream_select( $read_streams, $write_streams, $except_streams, 1 );
-
-            if ( $num_changed_streams === FALSE ):
-                throw new Exception( "stream_select error during login." );
-            endif;
-
-            if ( $num_changed_streams > 0 && in_array( $this->socket, $read_streams ) ):
-                $rawData = $this->readRaw();
-                if ( $rawData === FALSE ):
-                    throw new Exception( "Connection read error during login handshake." );
-                endif;
-                if ( $rawData === '' ):
-                    //echo "No raw data immediately available, continuing select.\n";
-                    continue;
-                endif;
-
-                echo "Raw data received during login. Appending to parser...\n";
-                $this->parser->appendData( $rawData );
-
-                try {
-                    while ( ($parsedMessage = $this->parser->parseNextMessage()) !== NULL ):
-                        echo "--- Message Parsed During Login Handshake ---\n";
-                        print_r( $parsedMessage );
-
-
-                        if ( !isset( $parsedMessage[ '35' ] ) ):
-                            continue;
-                        endif;
-
-
-                        $msgType = $parsedMessage[ '35' ];
-                        if ( $msgType === 'A' ): // Logon Acknowledge
-                            $logonAckReceived = TRUE;
-                            echo "Logon Acknowledge received.\n";
-                        elseif ( $msgType === '1' ): // TestRequest
-                            $testRequestReceived = TRUE;
-                            if ( isset( $parsedMessage[ '112' ] ) ):
-                                $testReqId = $parsedMessage[ '112' ];
-                                echo "TestRequest received with ID: " . $testReqId . ".\n";
-                            else:
-                                echo "TestRequest received without ID.\n";
-                            endif;
-                        endif;
-
-                        echo "-------------------------------------------\n";
-                    endwhile;
-                } catch ( Exception $e ) {
-                    echo "Parsing error during login: " . $e->getMessage() . "\n";
-                    echo "Current parser buffer content (HEX): " . bin2hex( $this->parser->getBuffer() ) . "\n";
-                }
-            endif;
-
-            if ( $logonAckReceived && $testRequestReceived && $testReqId !== NULL ):
-                echo "Logon handshake complete: Responding to TestRequest with Heartbeat...\n";
-                $this->sendHeartbeat( $testReqId );
-                return microtime( TRUE ); // Return current microtime after sending heartbeat
-            endif;
-        endwhile;
-
-
-        if ( !($logonAckReceived && $testRequestReceived) ):
-            $reason = '';
-            if ( !$logonAckReceived ): $reason .= "No Logon Acknowledge received. "; endif;
-            if ( !$testRequestReceived ): $reason .= "No TestRequest received. "; endif;
-            throw new Exception( "Login handshake failed: " . $reason . "Timeout reached." );
-        endif;
-
-        return microtime( TRUE ); // Fallback return if somehow control reaches here (should not for success)
-    }
-
-    /**
      * Sends a Heartbeat (0) message to the GLMX server.
      *
      * @param string|null $testReqId Optional. The TestReqID (112) to include if responding to a TestRequest.
@@ -407,6 +459,7 @@ class GLMXFixClient {
         ];
 
         $message = $this->generateFixMessage( '1', $testRequestFields );
+
         $this->sendRaw( $message );
 
         return $testReqId;
@@ -438,6 +491,7 @@ class GLMXFixClient {
      * @throws \DPRMC\GLMXFixClient\Exceptions\ClientNotRunningException
      * @throws \DPRMC\GLMXFixClient\Exceptions\StreamSelectException
      * @throws \Exception
+     * @throws \DPRMC\GLMXFixClient\Exceptions\NoDataException
      */
     public function getMessage() {
 
@@ -474,10 +528,10 @@ class GLMXFixClient {
         endif;
 
         // --- Handle Incoming Data ---
-        if ( $num_changed_sockets > 0 && in_array( $this->getSocketResource(), $read_sockets ) ) {
+        if ( $num_changed_sockets > 0 && in_array( $this->getSocketResource(), $read_sockets ) ):
             $rawData = $this->readRaw();
 
-            if ( $rawData === FALSE || $rawData === '' ):
+            if ( $rawData === FALSE ):
                 // Connection closed or error
                 $this->_debug( "Connection read error or closed by peer." );
                 $this->_setRunning( FALSE );
@@ -485,14 +539,22 @@ class GLMXFixClient {
             endif;
 
 
+            if ( '' === $rawData ):
+                $this->_debug( "No data yet..." );
+            endif;
+
             $this->parser->appendData( $rawData );
             $this->lastReceivedActivity = time(); // Update activity time after receiving data
-        }
+        endif;
 
         // --- Process Parsed Messages ---
         $content = $this->parser->parseNextMessage();
 
-        return new FixMessage( $content );
+        if ( $content ):
+            return new FixMessage( $content );
+        endif;
+
+        throw new NoDataException();
     }
 
 
