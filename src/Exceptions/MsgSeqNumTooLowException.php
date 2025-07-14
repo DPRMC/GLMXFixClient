@@ -18,4 +18,11 @@ class MsgSeqNumTooLowException extends Exception {
   }
 
 
+  public function getExpectedMsgSeqNum(): int {
+     return $this->expectedMsgSeqNum;
+  }
+
+  public function getReceivedMsgSeqNum(): int {
+  }
+
 }
