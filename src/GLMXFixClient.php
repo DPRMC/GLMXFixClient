@@ -177,25 +177,29 @@ class GLMXFixClient {
         $startTime        = microtime( TRUE ); // Use microtime for more precise timeout checking
         $timeout          = 10;                // Max 10 seconds for logon acknowledge
 
-        echo "Waiting for Logon Acknowledge...\n";
 
-        while ( microtime( TRUE ) - $startTime < $timeout && !$logonAckReceived ):
+        $this->_debug( "Waiting for Logon Acknowledge..." );
+
+        while ( microtime( TRUE ) - $startTime < $timeout ):
             $read_streams   = [ $this->socket ];
             $write_streams  = NULL;
             $except_streams = NULL;
 
-            $num_changed_streams = @stream_select( $read_streams, $write_streams, $except_streams, 1 );
+            $num_changed_streams = @stream_select( $read_streams,
+                                                   $write_streams,
+                                                   $except_streams,
+                                                   1 );
 
-            if ( $num_changed_streams === FALSE ):
+            if ( false === $num_changed_streams ):
                 throw new Exception( "stream_select error during login." );
             endif;
 
             if ( $num_changed_streams > 0 && in_array( $this->socket, $read_streams ) ):
                 $rawData = $this->readRaw();
-                if ( $rawData === FALSE ):
+                if ( false === $rawData  ):
                     throw new Exception( "Connection read error during login handshake." );
                 endif;
-                if ( $rawData === '' ):
+                if ( '' === $rawData ):
                     //echo "No raw data immediately available, continuing select.\n"; // Keep this commented for cleaner output unless debugging
                     continue;
                 endif;
@@ -203,93 +207,66 @@ class GLMXFixClient {
                 echo "Raw data received during login. Appending to parser...\n";
                 $this->parser->appendData( $rawData );
 
-                try {
-                    while ( ($parsedMessage = $this->parser->parseNextMessage()) !== NULL ):
-                        $this->_debug( '--- Message Parsed During Login Handshake ---' );
 
-                        $fixMessage = new FixMessage( $parsedMessage );
+                while ( ($parsedMessage = $this->parser->parseNextMessage()) !== NULL ):
+                    $this->_debug( '--- Message Parsed During Login Handshake ---' );
 
-                        if ( $this->debug ):
-                            dump( $fixMessage );
-                        endif;
+                    $fixMessage = new FixMessage( $parsedMessage );
 
-
-                        switch ( $fixMessage->getMessageType() ):
-                            case FixMessage::Logon:
-                                $this->_debug( 'Logon' );
-                                // Do the thing.
-                                break;
-                            case FixMessage::Logout:
-                                $this->_debug( 'Logout' );
-                                $this->_debug( $fixMessage->content[ FixMessage::TEXT ] );
-                                $text = $fixMessage->content[ FixMessage::TEXT ];
-
-                                if( str_starts_with( $text, 'MsgSeqNum too low, expecting')):
-                                    preg_match_all('/\d+/', $text, $matches);
-                                    throw new MsgSeqNumTooLowException($text, $matches[0][0], $matches[0][1]);
-                                endif;
-
-                                throw new GenericFixMessageException( $fixMessage );
-                                break;
-                            case FixMessage::Heartbeat:
-                                $this->_debug( 'Heartbeat' );
-                                // Do the thing.
-                                break;
-                            case FixMessage::TestRequest:
-                                $this->_debug( 'TestRequest' );
-                                // Do the thing.
-                                break;
-                            case FixMessage::ResendRequest:
-                                $this->_debug( 'ResendRequest' );
-                                // Do the thing.
-                                break;
-                            case FixMessage::Reject:
-                                $this->_debug( 'Reject' );
-                                // Do the thing.
-                                break;
-                            case FixMessage::SequenceReset:
-                                $this->_debug( 'SequenceReset' );
-                                // Do the thing.
-                                break;
-                            default:
-                                $this->_debug( '----DEFAULT----' );
-                            //throw new Exception( 'Unknown message type: ' . $message->getMessageType() );
-                        endswitch;
+                    if ( $this->debug ):
+                        print_r( $fixMessage );
+                    endif;
 
 
-                        if ( !isset( $parsedMessage[ '35' ] ) ):
-                            continue;
-                        endif;
-
-
-                        $msgType = $parsedMessage[ '35' ];
-                        if ( $msgType === 'A' ): // Logon Acknowledge
-                            $logonAckReceived = TRUE;
+                    switch ( $fixMessage->getMessageType() ):
+                        case FixMessage::Logon:
+                            $this->_debug( 'Logon' );
                             $this->_debug( "Logon Acknowledge received. Login handshake complete." );
                             return microtime( TRUE ); // Login successful, return timestamp
-                        else:
-                            // If GLMX sends other messages (like TestRequest) before Logon Ack,
-                            // the main loop will handle them. Here, we only care about Logon Ack.
-                            $this->_debug( "Received unexpected MsgType during login handshake: " . $msgType . ". Waiting for Logon Acknowledge." );
-                        endif;
 
-                        $this->_debug( "-------------------------------------------" );
-                    endwhile;
-                } catch ( Exception $e ) {
-                    $this->_debug( "Parsing error during login: " . $e->getMessage() );
-                    $this->_debug( "Current parser buffer content (HEX): " . bin2hex( $this->parser->getBuffer() ) );
-                }
+                        case FixMessage::Logout:
+                            $this->_debug( 'Logout' );
+                            $this->_debug( $fixMessage->content[ FixMessage::TEXT ] );
+                            $text = $fixMessage->content[ FixMessage::TEXT ];
+
+                            if ( str_starts_with( $text, 'MsgSeqNum too low, expecting' ) ):
+                                preg_match_all( '/\d+/', $text, $matches );
+                                throw new MsgSeqNumTooLowException( $text, $matches[ 0 ][ 0 ], $matches[ 0 ][ 1 ] );
+                            endif;
+
+                            throw new GenericFixMessageException( $fixMessage );
+
+                        case FixMessage::Heartbeat:
+                            $this->_debug( 'Heartbeat' );
+                            // Do the thing.
+                            break;
+                        case FixMessage::TestRequest:
+                            $this->_debug( 'TestRequest' );
+                            // Do the thing.
+                            break;
+                        case FixMessage::ResendRequest:
+                            $this->_debug( 'ResendRequest' );
+                            // Do the thing.
+                            break;
+                        case FixMessage::Reject:
+                            $this->_debug( 'Reject' );
+                            // Do the thing.
+                            break;
+                        case FixMessage::SequenceReset:
+                            $this->_debug( 'SequenceReset' );
+                            // Do the thing.
+                            break;
+                        default:
+                            $this->_debug( '----DEFAULT----' );
+                            throw new Exception( 'Unknown message type: ' . $fixMessage->getMessageType() );
+                    endswitch;
+                endwhile;
+
             endif;
         endwhile;
 
 
-        // If we exit the loop without receiving Logon Acknowledge
-        if ( !$logonAckReceived ):
-            throw new Exception( "Login handshake failed: No Logon Acknowledge received within timeout." );
-        endif;
-
-        // This line should ideally not be reached if Logon Ack is successfully received and returned.
-        return microtime( TRUE );
+        throw new Exception( "Login handshake failed: No Logon Acknowledge received within timeout." );
     }
 
 
