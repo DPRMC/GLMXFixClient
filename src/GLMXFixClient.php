@@ -5,6 +5,8 @@ namespace DPRMC\GLMXFixClient;
 use Carbon\Carbon;
 use DPRMC\GLMXFixClient\Exceptions\ClientNotRunningException;
 use DPRMC\GLMXFixClient\Exceptions\ConnectionClosedByPeerException;
+use DPRMC\GLMXFixClient\Exceptions\GenericFixMessageException;
+use DPRMC\GLMXFixClient\Exceptions\MsgSeqNumTooLowException;
 use DPRMC\GLMXFixClient\Exceptions\NoDataException;
 use DPRMC\GLMXFixClient\Exceptions\ParseException;
 use DPRMC\GLMXFixClient\Exceptions\SocketNotConnectedException;
@@ -207,7 +209,7 @@ class GLMXFixClient {
 
                         $fixMessage = new FixMessage( $parsedMessage );
 
-                        if( $this->debug ):
+                        if ( $this->debug ):
                             dump( $fixMessage );
                         endif;
 
@@ -220,8 +222,14 @@ class GLMXFixClient {
                             case FixMessage::Logout:
                                 $this->_debug( 'Logout' );
                                 $this->_debug( $fixMessage->content[ FixMessage::TEXT ] );
-                                dump( $fixMessage->content );
-                                // Do the thing.
+                                $text = $fixMessage->content[ FixMessage::TEXT ];
+
+                                if( str_starts_with( $text, 'MsgSeqNum too low, expecting')):
+                                    preg_match_all('/\d+/', $text, $matches);
+                                    throw new MsgSeqNumTooLowException($text, $matches[0][0], $matches[0][1]);
+                                endif;
+
+                                throw new GenericFixMessageException( $fixMessage );
                                 break;
                             case FixMessage::Heartbeat:
                                 $this->_debug( 'Heartbeat' );
@@ -257,15 +265,15 @@ class GLMXFixClient {
                         $msgType = $parsedMessage[ '35' ];
                         if ( $msgType === 'A' ): // Logon Acknowledge
                             $logonAckReceived = TRUE;
-                            $this->_debug( "Logon Acknowledge received. Login handshake complete.");
+                            $this->_debug( "Logon Acknowledge received. Login handshake complete." );
                             return microtime( TRUE ); // Login successful, return timestamp
                         else:
                             // If GLMX sends other messages (like TestRequest) before Logon Ack,
                             // the main loop will handle them. Here, we only care about Logon Ack.
-                            $this->_debug( "Received unexpected MsgType during login handshake: " . $msgType . ". Waiting for Logon Acknowledge.");
+                            $this->_debug( "Received unexpected MsgType during login handshake: " . $msgType . ". Waiting for Logon Acknowledge." );
                         endif;
 
-                        $this->_debug( "-------------------------------------------");
+                        $this->_debug( "-------------------------------------------" );
                     endwhile;
                 } catch ( Exception $e ) {
                     $this->_debug( "Parsing error during login: " . $e->getMessage() );
@@ -411,22 +419,22 @@ class GLMXFixClient {
         foreach ( $standardHeaderOrder as $tag ):
             // Populate header fields from class properties
             switch ( $tag ):
-                case '35':
+                case FixMessage::MSG_TYPE:
                     $headerFields[ $tag ] = $msgType;
                     break;
-                case '34':
+                case FixMessage::MSG_SEQ_NUM:
                     $headerFields[ $tag ] = (string)$this->nextOutgoingMsgSeqNum;
                     break;
-                case '49':
+                case FixMessage::SENDER_COMP_ID:
                     $headerFields[ $tag ] = $this->senderCompID;
                     break;
-                case '52':
+                case FixMessage::SENDING_TIME:
                     $headerFields[ $tag ] = gmdate( 'Ymd-H:i:s.v' );
                     break; // UTC timestamp
-                case '56':
+                case FixMessage::TARGET_COMP_ID:
                     $headerFields[ $tag ] = $this->targetCompID;
                     break;
-                case '98':
+                case FixMessage::ENCRYPT_METHOD:
                     $headerFields[ $tag ] = '0'; // Fixed value as per admin feedback
                     break;
             endswitch;
@@ -514,7 +522,7 @@ class GLMXFixClient {
         if ( $this->socket ):
             fclose( $this->socket );
             $this->socket = NULL;
-            $this->_debug("Disconnected from FIX server.");
+            $this->_debug( "Disconnected from FIX server." );
         endif;
     }
 
