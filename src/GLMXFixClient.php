@@ -43,15 +43,18 @@ class GLMXFixClient {
     protected int  $lastReceivedActivity;
 
 
-    public function __construct( string $senderCompID = 'EXAMPLE',
-                                 string $password = '<PASSWORD>',
-                                 string $socketConnectHost = 'fixgw.stg.glmx.com',
-                                 int    $socketConnectPort = 4303,
-                                 string $targetCompID = 'GLMX',
-                                 int    $heartBtInt = 30,
-                                 string $beginString = 'FIX.4.4',
-                                 bool   $socketUseSSL = TRUE,
-                                 string $enabledProtocols = 'TLSv1.2' ) {
+    protected LogInterface $logger;
+
+    public function __construct( string       $senderCompID = 'EXAMPLE',
+                                 string       $password = '<PASSWORD>',
+                                 string       $socketConnectHost = 'fixgw.stg.glmx.com',
+                                 int          $socketConnectPort = 4303,
+                                 string       $targetCompID = 'GLMX',
+                                 int          $heartBtInt = 30,
+                                 string       $beginString = 'FIX.4.4',
+                                 bool         $socketUseSSL = TRUE,
+                                 string       $enabledProtocols = 'TLSv1.2',
+                                 LogInterface $logger = NULL ) {
         $this->senderCompID      = $senderCompID;
         $this->password          = $password;
         $this->socketConnectHost = $socketConnectHost;
@@ -66,6 +69,14 @@ class GLMXFixClient {
         $this->parser = new FixMessageParser( $this->beginString );
 
         $this->lastSentActivity = time();
+
+        if ( $logger === NULL ):
+            $this->logger = new DebugLogger();
+        else:
+            $this->logger = $logger;
+        endif;
+
+
     }
 
 
@@ -158,6 +169,7 @@ class GLMXFixClient {
         $message = $this->generateFixMessage( FixMessage::Logon, $logonFields );
 
         $this->sendRaw( $message );
+        $this->logger->logRaw( $message );
 
         $logonAckReceived = FALSE;
         $startTime        = microtime( TRUE ); // Use microtime for more precise timeout checking
@@ -205,8 +217,8 @@ class GLMXFixClient {
                                 break;
                             case FixMessage::Logout:
                                 $this->_debug( 'Logout' );
-                                $this->_debug($fixMessage->content[FixMessage::TEXT]);
-                                dump($fixMessage->content);
+                                $this->_debug( $fixMessage->content[ FixMessage::TEXT ] );
+                                dump( $fixMessage->content );
                                 // Do the thing.
                                 break;
                             case FixMessage::Heartbeat:
@@ -233,8 +245,6 @@ class GLMXFixClient {
                                 $this->_debug( '----DEFAULT----' );
                             //throw new Exception( 'Unknown message type: ' . $message->getMessageType() );
                         endswitch;
-
-
 
 
                         if ( !isset( $parsedMessage[ '35' ] ) ):
