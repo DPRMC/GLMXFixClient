@@ -23,6 +23,7 @@ class MsgSeqNumTooLowException extends Exception {
   }
 
   public function getReceivedMsgSeqNum(): int {
+      return $this->receivedMsgSeqNum;
   }
 
 }
