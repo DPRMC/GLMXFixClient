@@ -152,23 +152,20 @@ class GLMXFixClient {
         $logonFields = [
             '108' => (string)$this->heartBtInt, // HeartBtInt
             '554' => $this->password,           // Password
-            //'98'  => '0',                       // EncryptMethod = None (as required by GLMX admin)
+            '98'  => '0',                       // EncryptMethod = None (as required by GLMX admin)
         ];
 
         $message = $this->generateFixMessage( FixMessage::Logon, $logonFields );
 
-        //dd($message);
         $this->sendRaw( $message );
 
-        $logonAckReceived    = FALSE;
-        $testRequestReceived = FALSE;
-        $testReqId           = NULL;
-        $startTime           = microtime( TRUE ); // Use microtime for more precise timeout checking
-        $timeout             = 10;                // Max 10 seconds for login handshake
+        $logonAckReceived = FALSE;
+        $startTime        = microtime( TRUE ); // Use microtime for more precise timeout checking
+        $timeout          = 10;                // Max 10 seconds for logon acknowledge
 
-        echo "Waiting for Logon Acknowledge and TestRequest...\n";
+        echo "Waiting for Logon Acknowledge...\n";
 
-        while ( microtime( TRUE ) - $startTime < $timeout && (!$logonAckReceived || !$testRequestReceived) ):
+        while ( microtime( TRUE ) - $startTime < $timeout && !$logonAckReceived ):
             $read_streams   = [ $this->socket ];
             $write_streams  = NULL;
             $except_streams = NULL;
@@ -185,7 +182,7 @@ class GLMXFixClient {
                     throw new Exception( "Connection read error during login handshake." );
                 endif;
                 if ( $rawData === '' ):
-                    //echo "No raw data immediately available, continuing select.\n";
+                    //echo "No raw data immediately available, continuing select.\n"; // Keep this commented for cleaner output unless debugging
                     continue;
                 endif;
 
@@ -206,15 +203,12 @@ class GLMXFixClient {
                         $msgType = $parsedMessage[ '35' ];
                         if ( $msgType === 'A' ): // Logon Acknowledge
                             $logonAckReceived = TRUE;
-                            echo "Logon Acknowledge received.\n";
-                        elseif ( $msgType === '1' ): // TestRequest
-                            $testRequestReceived = TRUE;
-                            if ( isset( $parsedMessage[ '112' ] ) ):
-                                $testReqId = $parsedMessage[ '112' ];
-                                echo "TestRequest received with ID: " . $testReqId . ".\n";
-                            else:
-                                echo "TestRequest received without ID.\n";
-                            endif;
+                            echo "Logon Acknowledge received. Login handshake complete.\n";
+                            return microtime( TRUE ); // Login successful, return timestamp
+                        else:
+                            // If GLMX sends other messages (like TestRequest) before Logon Ack,
+                            // the main loop will handle them. Here, we only care about Logon Ack.
+                            echo "Received unexpected MsgType during login handshake: " . $msgType . ". Waiting for Logon Acknowledge.\n";
                         endif;
 
                         echo "-------------------------------------------\n";
@@ -224,23 +218,16 @@ class GLMXFixClient {
                     echo "Current parser buffer content (HEX): " . bin2hex( $this->parser->getBuffer() ) . "\n";
                 }
             endif;
-
-            if ( $logonAckReceived && $testRequestReceived && $testReqId !== NULL ):
-                echo "Logon handshake complete: Responding to TestRequest with Heartbeat...\n";
-                $this->sendHeartbeat( $testReqId );
-                return microtime( TRUE ); // Return current microtime after sending heartbeat
-            endif;
         endwhile;
 
 
-        if ( !($logonAckReceived && $testRequestReceived) ):
-            $reason = '';
-            if ( !$logonAckReceived ): $reason .= "No Logon Acknowledge received. "; endif;
-            if ( !$testRequestReceived ): $reason .= "No TestRequest received. "; endif;
-            throw new Exception( "Login handshake failed: " . $reason . "Timeout reached." );
+        // If we exit the loop without receiving Logon Acknowledge
+        if ( !$logonAckReceived ):
+            throw new Exception( "Login handshake failed: No Logon Acknowledge received within timeout." );
         endif;
 
-        return microtime( TRUE ); // Fallback return if somehow control reaches here (should not for success)
+        // This line should ideally not be reached if Logon Ack is successfully received and returned.
+        return microtime( TRUE );
     }
 
 
@@ -255,7 +242,7 @@ class GLMXFixClient {
         $fields = [
             '108' => (string)$this->heartBtInt, // HeartBtInt
             '554' => $this->password,           // Password
-            //'98'  => '0',                       // EncryptMethod = None (as required by GLMX admin)
+            '98'  => '0',                       // EncryptMethod = None (as required by GLMX admin)
         ];
 
 
@@ -362,7 +349,7 @@ class GLMXFixClient {
             '49', // SenderCompID
             '52', // SendingTime
             '56', // TargetCompID
-            '98', //
+            '98', // EncryptMethod (added as per GLMX admin feedback)
             // Add other standard header fields here if needed, in their numerical order
         ];
 
@@ -386,7 +373,7 @@ class GLMXFixClient {
                     $headerFields[ $tag ] = $this->targetCompID;
                     break;
                 case '98':
-                    $headerFields[ $tag ] = '0';
+                    $headerFields[ $tag ] = '0'; // Fixed value as per admin feedback
                     break;
             endswitch;
         endforeach;
@@ -435,7 +422,7 @@ class GLMXFixClient {
             $heartbeatFields[ '112' ] = $testReqId; // TestReqID
         endif;
 
-        $message = $this->generateFixMessage( '0', $heartbeatFields );
+        $message = $this->generateFixMessage( FixMessage::Heartbeat, $heartbeatFields );
         $this->sendRaw( $message );
     }
 
@@ -458,7 +445,7 @@ class GLMXFixClient {
             '112' => $testReqId, // TestReqID
         ];
 
-        $message = $this->generateFixMessage( '1', $testRequestFields );
+        $message = $this->generateFixMessage( FixMessage::TestRequest, $testRequestFields );
 
         $this->sendRaw( $message );
 
