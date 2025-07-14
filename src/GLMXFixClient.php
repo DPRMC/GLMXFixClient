@@ -192,7 +192,49 @@ class GLMXFixClient {
                 try {
                     while ( ($parsedMessage = $this->parser->parseNextMessage()) !== NULL ):
                         echo "--- Message Parsed During Login Handshake ---\n";
-                        print_r( $parsedMessage );
+                        //print_r( $parsedMessage );
+
+                        $fixMessage = new FixMessage( $parsedMessage );
+
+                        dump( $fixMessage );
+
+                        switch ( $fixMessage->getMessageType() ):
+                            case FixMessage::Logon:
+                                $this->_debug( 'Logon' );
+                                // Do the thing.
+                                break;
+                            case FixMessage::Logout:
+                                $this->_debug( 'Logout' );
+                                $this->_debug($fixMessage->content[FixMessage::TEXT]);
+                                dump($fixMessage->content);
+                                // Do the thing.
+                                break;
+                            case FixMessage::Heartbeat:
+                                $this->_debug( 'Heartbeat' );
+                                // Do the thing.
+                                break;
+                            case FixMessage::TestRequest:
+                                $this->_debug( 'TestRequest' );
+                                // Do the thing.
+                                break;
+                            case FixMessage::ResendRequest:
+                                $this->_debug( 'ResendRequest' );
+                                // Do the thing.
+                                break;
+                            case FixMessage::Reject:
+                                $this->_debug( 'Reject' );
+                                // Do the thing.
+                                break;
+                            case FixMessage::SequenceReset:
+                                $this->_debug( 'SequenceReset' );
+                                // Do the thing.
+                                break;
+                            default:
+                                $this->_debug( '----DEFAULT----' );
+                            //throw new Exception( 'Unknown message type: ' . $message->getMessageType() );
+                        endswitch;
+
+
 
 
                         if ( !isset( $parsedMessage[ '35' ] ) ):
@@ -464,6 +506,10 @@ class GLMXFixClient {
         endif;
     }
 
+
+    public function setRunning( bool $running ) {
+        $this->running = $running;
+    }
 
     protected function _setRunning( bool $running ) {
         $this->running = $running;
