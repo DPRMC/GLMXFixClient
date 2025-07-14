@@ -257,6 +257,8 @@ class FixMessage {
     const ALLOC_REPORT_REF_ID = 795;
     const ALLOC_REPORT_TYPE   = 794;
 
+    const ENCRYPT_METHOD = 98;
+
     public function __construct( array $content = [] ) {
         $this->content = $content;
     }

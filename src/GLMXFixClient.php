@@ -161,9 +161,9 @@ class GLMXFixClient {
         echo "Sending Logon (A) message...\n";
 
         $logonFields = [
-            '108' => (string)$this->heartBtInt, // HeartBtInt
-            '554' => $this->password,           // Password
-            '98'  => '0',                       // EncryptMethod = None (as required by GLMX admin)
+            FixMessage::HEART_BT_INT   => (string)$this->heartBtInt, // HeartBtInt
+            FixMessage::PASSWORD       => $this->password,           // Password
+            FixMessage::ENCRYPT_METHOD => '0',                       // EncryptMethod = None (as required by GLMX admin)
         ];
 
         $message = $this->generateFixMessage( FixMessage::Logon, $logonFields );
@@ -203,12 +203,14 @@ class GLMXFixClient {
 
                 try {
                     while ( ($parsedMessage = $this->parser->parseNextMessage()) !== NULL ):
-                        echo "--- Message Parsed During Login Handshake ---\n";
-                        //print_r( $parsedMessage );
+                        $this->_debug( '--- Message Parsed During Login Handshake ---' );
 
                         $fixMessage = new FixMessage( $parsedMessage );
 
-                        dump( $fixMessage );
+                        if( $this->debug ):
+                            dump( $fixMessage );
+                        endif;
+
 
                         switch ( $fixMessage->getMessageType() ):
                             case FixMessage::Logon:
@@ -255,19 +257,19 @@ class GLMXFixClient {
                         $msgType = $parsedMessage[ '35' ];
                         if ( $msgType === 'A' ): // Logon Acknowledge
                             $logonAckReceived = TRUE;
-                            echo "Logon Acknowledge received. Login handshake complete.\n";
+                            $this->_debug( "Logon Acknowledge received. Login handshake complete.");
                             return microtime( TRUE ); // Login successful, return timestamp
                         else:
                             // If GLMX sends other messages (like TestRequest) before Logon Ack,
                             // the main loop will handle them. Here, we only care about Logon Ack.
-                            echo "Received unexpected MsgType during login handshake: " . $msgType . ". Waiting for Logon Acknowledge.\n";
+                            $this->_debug( "Received unexpected MsgType during login handshake: " . $msgType . ". Waiting for Logon Acknowledge.");
                         endif;
 
-                        echo "-------------------------------------------\n";
+                        $this->_debug( "-------------------------------------------");
                     endwhile;
                 } catch ( Exception $e ) {
-                    echo "Parsing error during login: " . $e->getMessage() . "\n";
-                    echo "Current parser buffer content (HEX): " . bin2hex( $this->parser->getBuffer() ) . "\n";
+                    $this->_debug( "Parsing error during login: " . $e->getMessage() );
+                    $this->_debug( "Current parser buffer content (HEX): " . bin2hex( $this->parser->getBuffer() ) );
                 }
             endif;
         endwhile;
@@ -331,7 +333,7 @@ class GLMXFixClient {
         if ( $bytesWritten === FALSE ):
             throw new Exception( "Failed to write to socket." );
         endif;
-        echo "Sent: " . str_replace( self::SOH, '|', $message ) . "\n";
+        $this->_debug( "Sent: " . str_replace( self::SOH, '|', $message ) );
 
         $this->lastSentActivity = time();
         return $bytesWritten;
@@ -512,7 +514,7 @@ class GLMXFixClient {
         if ( $this->socket ):
             fclose( $this->socket );
             $this->socket = NULL;
-            echo "Disconnected from FIX server.\n";
+            $this->_debug("Disconnected from FIX server.");
         endif;
     }
 
