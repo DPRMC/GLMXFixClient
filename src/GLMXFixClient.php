@@ -159,7 +159,7 @@ class GLMXFixClient {
      * @return float Microtime timestamp when the last message was sent during handshake, or throws exception.
      * @throws \Exception If connection is not established, message sending fails, or handshake times out/fails.
      */
-    public function login(): float {
+    public function login( int $expectedSequenceNumber = NULL ): float {
         echo "Sending Logon (A) message...\n";
 
         $logonFields = [
@@ -167,6 +167,12 @@ class GLMXFixClient {
             FixMessage::PASSWORD       => $this->password,           // Password
             FixMessage::ENCRYPT_METHOD => '0',                       // EncryptMethod = None (as required by GLMX admin)
         ];
+
+
+        // A failed login attempt will increment the nextOutgoingMessageSequenceNumber in the GLMX system, but not in this class.
+        if ( $expectedSequenceNumber ):
+            $this->nextOutgoingMsgSeqNum = (string)$expectedSequenceNumber;
+        endif;
 
         $message = $this->generateFixMessage( FixMessage::Logon, $logonFields );
 
@@ -190,13 +196,13 @@ class GLMXFixClient {
                                                    $except_streams,
                                                    1 );
 
-            if ( false === $num_changed_streams ):
+            if ( FALSE === $num_changed_streams ):
                 throw new Exception( "stream_select error during login." );
             endif;
 
             if ( $num_changed_streams > 0 && in_array( $this->socket, $read_streams ) ):
                 $rawData = $this->readRaw();
-                if ( false === $rawData  ):
+                if ( FALSE === $rawData ):
                     throw new Exception( "Connection read error during login handshake." );
                 endif;
                 if ( '' === $rawData ):
@@ -295,7 +301,7 @@ class GLMXFixClient {
         $message = $this->generateFixMessage( FixMessage::SequenceReset, $fields );
         $this->sendRaw( $message );
 
-        //FixMessage::SequenceReset;
+        FixMessage::SequenceReset;
     }
 
 
