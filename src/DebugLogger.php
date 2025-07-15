@@ -12,4 +12,8 @@ class DebugLogger implements LogInterface {
     public function logRaw( string $message ) {
         echo $message . "\n";
     }
+
+    public function log( FixMessage $fixMessage ) {
+        print_r($fixMessage);
+    }
 }

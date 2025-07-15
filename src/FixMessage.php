@@ -271,4 +271,9 @@ class FixMessage {
     }
 
 
+    public function getContent(): array {
+        return $this->content;
+    }
+
+
 }
