@@ -577,6 +577,8 @@ class GLMXFixClient {
         if ( $num_changed_sockets > 0 && in_array( $this->getSocketResource(), $read_sockets ) ):
             $rawData = $this->readRaw();
 
+            $this->logger->logRaw($rawData);
+
             if ( $rawData === FALSE ):
                 // Connection closed or error
                 $this->_debug( "Connection read error or closed by peer." );
