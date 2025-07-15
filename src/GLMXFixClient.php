@@ -212,6 +212,7 @@ class GLMXFixClient {
                     $this->_debug( '--- Message Parsed During Login Handshake ---' );
 
                     $fixMessage = new FixMessage( $parsedMessage );
+                    $this->logger->logParsed( $fixMessage );
 
                     if ( $this->debug ):
                         print_r( $fixMessage );
@@ -240,25 +241,31 @@ class GLMXFixClient {
                             $this->_debug( 'Heartbeat' );
                             // Do the thing.
                             break;
+
                         case FixMessage::TestRequest:
                             $this->_debug( 'TestRequest' );
                             // Do the thing.
                             break;
+
                         case FixMessage::ResendRequest:
                             $this->_debug( 'ResendRequest' );
                             // Do the thing.
                             break;
+
                         case FixMessage::Reject:
                             $this->_debug( 'Reject' );
                             // Do the thing.
                             break;
+
                         case FixMessage::SequenceReset:
                             $this->_debug( 'SequenceReset' );
                             // Do the thing.
                             break;
+
                         default:
                             $this->_debug( '----DEFAULT----' );
                             throw new Exception( 'Unknown message type: ' . $fixMessage->getMessageType() );
+
                     endswitch;
                 endwhile;
 
