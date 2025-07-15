@@ -32,6 +32,9 @@ class GLMXFixClient {
      */
     protected $socket = NULL; // Initialize to null
 
+    /**
+     * @var int
+     */
     protected int $nextOutgoingMsgSeqNum = 1;
 
     // Add a parser property to handle incoming messages during login
@@ -144,7 +147,7 @@ class GLMXFixClient {
         endif;
 
         // 5. Set the stream to non-blocking mode
-        if ( !stream_set_blocking( $this->socket, FALSE ) ):
+        if ( ! stream_set_blocking( $this->socket, FALSE ) ):
             fclose( $this->socket );
             throw new Exception( "Failed to set stream to non-blocking mode." );
         endif;
@@ -214,7 +217,7 @@ class GLMXFixClient {
                 $this->parser->appendData( $rawData );
 
 
-                while ( ($parsedMessage = $this->parser->parseNextMessage()) !== NULL ):
+                while ( ( $parsedMessage = $this->parser->parseNextMessage() ) !== NULL ):
                     $this->_debug( '--- Message Parsed During Login Handshake ---' );
 
                     $fixMessage = new FixMessage( $parsedMessage );
@@ -324,7 +327,7 @@ class GLMXFixClient {
      * @throws \Exception
      */
     protected function sendRaw( string $message ): int|false {
-        if ( !$this->socket ):
+        if ( ! $this->socket ):
             throw new Exception( "Socket not connected." );
         endif;
         $bytesWritten = @fwrite( $this->socket, $message );
@@ -347,7 +350,7 @@ class GLMXFixClient {
      * @throws SocketNotConnectedException
      */
     public function readRaw( int $length = 2048 ): string|false {
-        if ( !$this->socket ):
+        if ( ! $this->socket ):
             throw new SocketNotConnectedException();
         endif;
         $data = @fread( $this->socket, $length );
@@ -381,14 +384,14 @@ class GLMXFixClient {
         for ( $i = 0; $i < strlen( $message ); $i++ ):
             $sum += ord( $message[ $i ] );
         endfor;
-        return str_pad( (string)($sum % 256), 3, '0', STR_PAD_LEFT );
+        return str_pad( (string)( $sum % 256 ), 3, '0', STR_PAD_LEFT );
     }
 
     /**
      * Generates a complete FIX message string.
      *
-     * @param string                $msgType The MsgType (tag 35).
-     * @param array<string, string> $fields  An associative array of FIX tags and their values (excluding header and trailer).
+     * @param string $msgType The MsgType (tag 35).
+     * @param array<string, string> $fields An associative array of FIX tags and their values (excluding header and trailer).
      *
      * @return string The complete FIX message.
      */
@@ -550,7 +553,7 @@ class GLMXFixClient {
 
         // Use stream_select to wait for data or timeout for periodic actions
         // Timeout is set to a short interval (e.g., 1 second) or remaining time till next heartbeat
-        $timeout = $this->heartBtInt - (time() - $this->lastSentActivity);
+        $timeout = $this->heartBtInt - ( time() - $this->lastSentActivity );
         if ( $timeout < 1 ) $timeout = 1; // Don't block indefinitely if heartbeat is due
 
 
@@ -609,5 +612,13 @@ class GLMXFixClient {
         if ( $this->debug ):
             echo $message . "\n";
         endif;
+    }
+
+
+    /**
+     * @return int
+     */
+    public function getNextOutgoingMsgSeqNum(): int {
+        return $this->nextOutgoingMsgSeqNum;
     }
 }
