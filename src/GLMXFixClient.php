@@ -212,7 +212,7 @@ class GLMXFixClient {
                     $this->_debug( '--- Message Parsed During Login Handshake ---' );
 
                     $fixMessage = new FixMessage( $parsedMessage );
-                    $this->logger->logParsed( $fixMessage );
+                    $this->logger->log( $fixMessage );
 
                     if ( $this->debug ):
                         print_r( $fixMessage );
@@ -295,7 +295,7 @@ class GLMXFixClient {
         $message = $this->generateFixMessage( FixMessage::SequenceReset, $fields );
         $this->sendRaw( $message );
 
-        FixMessage::SequenceReset;
+        //FixMessage::SequenceReset;
     }
 
 
