@@ -264,9 +264,9 @@ class FixMessage {
     }
 
 
-    public function getMessageType(): int {
+    public function getMessageType(): string {
         if( isset($this->content[ self::MSG_TYPE ]) ):
-            return $this->content[ self::MSG_TYPE ];
+            return (string) $this->content[ self::MSG_TYPE ];
         endif;
     }
 
