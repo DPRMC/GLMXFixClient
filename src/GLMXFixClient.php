@@ -292,19 +292,16 @@ class GLMXFixClient {
      *
      * 8=FIX.4.2^9=79^35=4^49=SellSide^56=BuySide^34=1^52=20250709-17:30:00.000^36=100^10=104^
      */
-    public function sequenceReset() {
+    public function sequenceReset(): void {
         //
         $fields = [
-            '108' => (string)$this->heartBtInt, // HeartBtInt
-            '554' => $this->password,           // Password
-            '98'  => '0',                       // EncryptMethod = None (as required by GLMX admin)
+            FixMessage::HEART_BT_INT   => (string)$this->heartBtInt, // HeartBtInt
+            FixMessage::PASSWORD       => $this->password,           // Password
+            FixMessage::ENCRYPT_METHOD => '0',
         ];
-
 
         $message = $this->generateFixMessage( FixMessage::SequenceReset, $fields );
         $this->sendRaw( $message );
-
-        FixMessage::SequenceReset;
     }
 
 
@@ -577,7 +574,7 @@ class GLMXFixClient {
         if ( $num_changed_sockets > 0 && in_array( $this->getSocketResource(), $read_sockets ) ):
             $rawData = $this->readRaw();
 
-            $this->logger->logRaw($rawData);
+            $this->logger->logRaw( $rawData );
 
             if ( $rawData === FALSE ):
                 // Connection closed or error
