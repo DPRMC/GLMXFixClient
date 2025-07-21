@@ -334,6 +334,8 @@ class GLMXFixClient {
         $this->_debug( "Sent: " . str_replace( self::SOH, '|', $message ) );
 
         $this->lastSentActivity = time();
+
+        $this->logger->logRaw( $message );
         return $bytesWritten;
     }
 
@@ -435,6 +437,12 @@ class GLMXFixClient {
         foreach ( $fields as $tag => $value ):
             $headerFields[ $tag ] = $value;
         endforeach;
+
+
+        // No need to send the password if this is not a Logon message.
+        if ( $msgType != FixMessage::Logon ):
+            unset( $headerFields[ FixMessage::PASSWORD ] );
+        endif;
 
 
         $bodyContent = '';
