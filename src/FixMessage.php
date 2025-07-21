@@ -18,10 +18,6 @@ class FixMessage {
     const SequenceReset = '4';
 
 
-
-
-
-
     // FIX Application Level Messages
     const BusinessRejectMessage    = 'j';
     const NewOrderSingle           = 'D';
@@ -259,14 +255,19 @@ class FixMessage {
 
     const ENCRYPT_METHOD = 98;
 
+    // Reject message constants.
+    const REF_MSG_TYPE          = 372;
+    const REF_MSG_SEQ_NUM       = 373;
+    const SESSION_REJECT_REASON = 371;
+
     public function __construct( array $content = [] ) {
         $this->content = $content;
     }
 
 
     public function getMessageType(): string {
-        if( isset($this->content[ self::MSG_TYPE ]) ):
-            return (string) $this->content[ self::MSG_TYPE ];
+        if ( isset( $this->content[ self::MSG_TYPE ] ) ):
+            return (string)$this->content[ self::MSG_TYPE ];
         endif;
     }
 

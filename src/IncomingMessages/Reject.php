@@ -8,9 +8,9 @@ namespace DPRMC\GLMXFixClient\IncomingMessages;
  * Sent by GLMX when it cannot process a received message due to session-level rule violation.
  */
 class Reject extends AbstractIncomingMessage {
-    public readonly ?string $refSeqNum;           // Tag 45
+    public readonly ?string $refSeqNum;           // Tag 45 // No, it's 373
     public readonly ?string $refMsgType;          // Tag 372
-    public readonly ?int    $sessionRejectReason; // Tag 373
+    public readonly ?int    $sessionRejectReason; // Tag 373 // No, it's 371
     public readonly ?string $text;                // Tag 58
 
     /**
