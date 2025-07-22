@@ -444,6 +444,13 @@ class GLMXFixClient {
             unset( $headerFields[ FixMessage::PASSWORD ] );
         endif;
 
+        // This tag is not defined for the logout message.
+        if ( $msgType == FixMessage::Logout ):
+            unset( $headerFields[ FixMessage::ENCRYPT_METHOD ] );
+        endif;
+
+
+
 
         $bodyContent = '';
         foreach ( $headerFields as $tag => $value ):
@@ -510,6 +517,13 @@ class GLMXFixClient {
         $this->sendRaw( $message );
 
         return $testReqId;
+    }
+
+
+    public function sendLogout(): void {
+        echo "Sending Logout (5) message...\n";
+        $message = $this->generateFixMessage( FixMessage::Logout );
+        $this->sendRaw( $message );
     }
 
 
