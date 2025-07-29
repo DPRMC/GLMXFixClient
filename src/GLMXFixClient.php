@@ -159,10 +159,17 @@ class GLMXFixClient {
     /**
      * Initiates a FIX session by sending a Logon (A) message and waiting for confirmation.
      *
+     * @param int|NULL $expectedSequenceNumber
+     * @param bool|NULL $resetSeqNumFlag Only use in the testing environment. See comments below around parameter usage.
      * @return float Microtime timestamp when the last message was sent during handshake, or throws exception.
-     * @throws \Exception If connection is not established, message sending fails, or handshake times out/fails.
+     * @throws \Exception
+     * @throws GenericFixMessageException
+     * @throws MsgSeqNumTooLowException
+     * @throws ParseException
+     * @throws SocketNotConnectedException
      */
-    public function login( int $expectedSequenceNumber = NULL ): float {
+    public function login( int  $expectedSequenceNumber = NULL,
+                           bool $resetSeqNumFlag = FALSE ): float {
         echo "Sending Logon (A) message...\n";
 
         $logonFields = [
@@ -170,6 +177,17 @@ class GLMXFixClient {
             FixMessage::PASSWORD       => $this->password,           // Password
             FixMessage::ENCRYPT_METHOD => '0',                       // EncryptMethod = None (as required by GLMX admin)
         ];
+
+
+        /**
+         * In the event the consumer loses session data, the reconnection can be made with providing
+         * with ResetSeqNumFlag (141) =Y in the Logon message, which will instruct GLMX to clear the session, which
+         * can lead to data loss.
+         * This should only be done under exceptional circumstances or in test environments.
+         */
+        if ( $resetSeqNumFlag ):
+            $logonFields[ FixMessage::RESET_SEQ_NUM_FLAG ] = 'Y';
+        endif;
 
 
         // A failed login attempt will increment the nextOutgoingMessageSequenceNumber in the GLMX system, but not in this class.
@@ -448,8 +466,6 @@ class GLMXFixClient {
         if ( $msgType == FixMessage::Logout ):
             unset( $headerFields[ FixMessage::ENCRYPT_METHOD ] );
         endif;
-
-
 
 
         $bodyContent = '';
