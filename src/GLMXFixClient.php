@@ -354,7 +354,7 @@ class GLMXFixClient {
 
         $this->lastSentActivity = time();
 
-        $this->logger->log( FixMessageParser::parseFixFieldsFromRaw( $message ) );
+        $this->logger->log( new FixMessage(FixMessageParser::parseFixFieldsFromRaw( $message )) );
         $this->logger->logRaw( $message );
         return $bytesWritten;
     }
