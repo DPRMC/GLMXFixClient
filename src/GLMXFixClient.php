@@ -198,6 +198,7 @@ class GLMXFixClient {
         $message = $this->generateFixMessage( FixMessage::Logon, $logonFields );
 
         $this->sendRaw( $message );
+        $this->logger->log( new FixMessage( FixMessageParser::parseFixFieldsFromRaw( $message ) ) );
         $this->logger->logRaw( $message );
 
         $logonAckReceived = FALSE;
@@ -353,6 +354,7 @@ class GLMXFixClient {
 
         $this->lastSentActivity = time();
 
+        $this->logger->log( FixMessageParser::parseFixFieldsFromRaw( $message ) );
         $this->logger->logRaw( $message );
         return $bytesWritten;
     }
@@ -612,8 +614,6 @@ class GLMXFixClient {
         if ( $num_changed_sockets > 0 && in_array( $this->getSocketResource(), $read_sockets ) ):
             $rawData = $this->readRaw();
 
-            $this->logger->logRaw( $rawData );
-
             if ( $rawData === FALSE ):
                 // Connection closed or error
                 $this->_debug( "Connection read error or closed by peer." );
@@ -630,11 +630,15 @@ class GLMXFixClient {
             $this->lastReceivedActivity = time(); // Update activity time after receiving data
         endif;
 
+
+
         // --- Process Parsed Messages ---
         $content = $this->parser->parseNextMessage();
 
         if ( $content ):
-            return new FixMessage( $content );
+            $FixMessage = new FixMessage( $content );
+            $this->logger->log( $FixMessage );
+            return $FixMessage;
         endif;
 
         throw new NoDataException();

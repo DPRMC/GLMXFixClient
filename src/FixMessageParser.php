@@ -40,41 +40,41 @@ class FixMessageParser {
         // 1. Find the start of a FIX message (BeginString 8)
         $beginStringPos = strpos( $this->buffer, $beginStringTag );
 
-        if ( $beginStringPos === FALSE ) {
+        if ( FALSE === $beginStringPos ):
             // No BeginString found yet, or partial. Clear buffer if it's junk before BeginString.
             // In a real system, you might want more sophisticated junk handling.
             $this->buffer = '';
             return NULL;
-        }
+        endif;
 
         // If BeginString is not at the start, trim the buffer to remove leading junk.
-        if ( $beginStringPos > 0 ) {
+        if ( $beginStringPos > 0 ):
             $this->buffer   = substr( $this->buffer, $beginStringPos );
             $beginStringPos = 0; // Reset position to 0 after trimming
-        }
+        endif;
 
         // Now buffer should start with 8=FIX.X.X<SOH>
         // 2. Find BodyLength (tag 9)
         $bodyLengthTagPos = strpos( $this->buffer, '9=', $beginStringPos + $beginStringLength );
-        if ( $bodyLengthTagPos === FALSE ) {
+        if ( FALSE === $bodyLengthTagPos ) :
             // BodyLength tag not found yet in the current buffer segment
             return NULL;
-        }
+        endif;
 
         $bodyLengthEndPos = strpos( $this->buffer, $soh, $bodyLengthTagPos );
-        if ( $bodyLengthEndPos === FALSE ) {
+        if ( FALSE === $bodyLengthEndPos ) :
             // BodyLength value is not complete (SOH not found after '9=')
             return NULL;
-        }
+        endif;
 
         $bodyLengthStr = substr( $this->buffer, $bodyLengthTagPos + 2, $bodyLengthEndPos - ( $bodyLengthTagPos + 2 ) );
         $bodyLength    = (int)$bodyLengthStr;
 
-        if ( ! is_numeric( $bodyLengthStr ) || $bodyLength < 0 ) {
+        if ( ! is_numeric( $bodyLengthStr ) || $bodyLength < 0 ):
             // Malformed BodyLength. Discard current buffer segment to avoid infinite loop.
             $this->buffer = substr( $this->buffer, $bodyLengthEndPos + 1 );
             throw new ParseException( "Malformed BodyLength in FIX message." );
-        }
+        endif;
 
         // The BodyLength (9) field itself is immediately followed by the MsgType (35) field.
         // The value of BodyLength (9) is the number of characters from the start of the MsgType (35) field
@@ -88,28 +88,28 @@ class FixMessageParser {
         $minChecksumLength   = 7;
         $expectedTotalLength = $messageBodyStartPos + $bodyLength + $minChecksumLength;
 
-        if ( strlen( $this->buffer ) < $expectedTotalLength ) {
+        if ( strlen( $this->buffer ) < $expectedTotalLength ):
             // Not enough data in buffer to form a complete message.
             return NULL;
-        }
+        endif;
 
         // Try to locate CheckSum (tag 10) to confirm message end
         $checkSumTagStartPos = $messageBodyStartPos + $bodyLength;
         $checkSumTagString   = substr( $this->buffer, $checkSumTagStartPos, 3 ); // Should be "10="
 
-        if ( $checkSumTagString !== '10=' ) {
+        if ( $checkSumTagString !== '10=' ):
             // Checksum tag not where it's expected. Message is malformed or not complete.
             // This is a common error point in partial message reception.
             // Discard the potentially problematic message part.
             $this->buffer = substr( $this->buffer, $checkSumTagStartPos + 1 ); // Move past what we thought was the end
             throw new ParseException( "Expected CheckSum tag '10=' not found at calculated position." );
-        }
+        endif;
 
         $checkSumEndPos = strpos( $this->buffer, $soh, $checkSumTagStartPos );
-        if ( $checkSumEndPos === FALSE ) {
+        if ( FALSE === $checkSumEndPos ):
             // Checksum value is not complete (SOH not found after '10=')
             return NULL;
-        }
+        endif;
 
         $fullMessageLength = $checkSumEndPos + 1;
         $rawMessage        = substr( $this->buffer, 0, $fullMessageLength );
@@ -128,16 +128,13 @@ class FixMessageParser {
 
         // 5. Parse the complete message into an array
 //        $parsedFields = $this->parseFixFields( $rawMessage );
-        $parsedFields = self::parseFixFieldsFromRaw($rawMessage);
+        $parsedFields = self::parseFixFieldsFromRaw( $rawMessage );
 
         // Remove the processed message from the buffer
         $this->buffer = substr( $this->buffer, $fullMessageLength );
 
         return $parsedFields;
     }
-
-
-
 
 
     /**
