@@ -30,6 +30,37 @@ class FixMessage {
     const AllocationReport         = 'AS';
 
 
+
+    public static array $messageTypes = [
+        self::Logon         => 'Logon',
+        self::Logout        => 'Logout',
+        self::Heartbeat     => 'Heartbeat',
+        self::TestRequest   => 'TestRequest',
+        self::ResendRequest => 'ResendRequest',
+        self::Reject        => 'Reject',
+        self::SequenceReset => 'SequenceReset',
+
+        self::BusinessRejectMessage    => 'BusinessRejectMessage',
+        self::NewOrderSingle           => 'NewOrderSingle',
+        self::NewOrderList             => 'NewOrderList',
+        self::OrderCancelRequest       => 'OrderCancelRequest',
+        self::ExecutionReport          => 'ExecutionReport',
+        self::TradeCaptureReport       => 'TradeCaptureReport',
+        self::AllocationInstruction    => 'AllocationInstruction',
+        self::AllocationInstructionAck => 'AllocationInstructionAck',
+        self::AllocationReport         => 'AllocationReport',
+    ];
+
+    /**
+     * Retrieves the name of a FIX message type given its code.
+     * @param string $messageCode The FIX message code.
+     * @return string|null The message name or null if not found.
+     */
+    public static function getMessageName(string $messageCode): ?string
+    {
+        return self::$messageTypes[$messageCode] ?? null;
+    }
+
     // FIX TAGS
     // FIX Session Level Fields (Section: FIX SESSION HANDLING)
     const BEGIN_STRING       = 8;
