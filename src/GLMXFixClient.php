@@ -662,4 +662,9 @@ class GLMXFixClient {
     public function getNextOutgoingMsgSeqNum(): int {
         return $this->nextOutgoingMsgSeqNum;
     }
+
+
+    public function setNextOutgoingMsgSeqNum( int $nextSeqNum ) {
+        $this->nextOutgoingMsgSeqNum = $nextSeqNum;
+    }
 }
