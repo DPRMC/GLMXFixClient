@@ -35,7 +35,7 @@ class GLMXFixClient {
     /**
      * @var int
      */
-    protected int $nextOutgoingMsgSeqNum = 1;
+    protected int $nextOutgoingMsgSeqNum = 0;
 
     // Add a parser property to handle incoming messages during login
     protected FixMessageParser $parser;
@@ -485,7 +485,9 @@ class GLMXFixClient {
         $checksum    = $this->calculateCheckSum( $fullMessage );
         $fullMessage .= "10=" . $checksum . self::SOH;
 
-        $this->nextOutgoingMsgSeqNum++;
+        // This actually doesn't follow the process.
+        // I can safely delete this.
+        //$this->nextOutgoingMsgSeqNum++;
 
         return $fullMessage;
     }
