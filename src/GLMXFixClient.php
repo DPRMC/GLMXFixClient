@@ -32,6 +32,9 @@ class GLMXFixClient {
      */
     protected $socket = NULL; // Initialize to null
 
+
+    protected int $lastMsgSeqNum = 0;
+
     /**
      * @var int
      */
@@ -48,18 +51,20 @@ class GLMXFixClient {
     protected int  $lastReceivedActivity;
 
 
-    protected LogInterface $logger;
+    protected LogInterface                   $logger;
+    protected MessageSequenceNumberInterface $messageSequenceNumberManager;
 
-    public function __construct( string       $senderCompID = 'EXAMPLE',
-                                 string       $password = '<PASSWORD>',
-                                 string       $socketConnectHost = 'fixgw.stg.glmx.com',
-                                 int          $socketConnectPort = 4303,
-                                 string       $targetCompID = 'GLMX',
-                                 int          $heartBtInt = 30,
-                                 string       $beginString = 'FIX.4.4',
-                                 bool         $socketUseSSL = TRUE,
-                                 string       $enabledProtocols = 'TLSv1.2',
-                                 LogInterface $logger = NULL ) {
+    public function __construct( string                         $senderCompID = 'EXAMPLE',
+                                 string                         $password = '<PASSWORD>',
+                                 string                         $socketConnectHost = 'fixgw.stg.glmx.com',
+                                 int                            $socketConnectPort = 4303,
+                                 string                         $targetCompID = 'GLMX',
+                                 int                            $heartBtInt = 30,
+                                 string                         $beginString = 'FIX.4.4',
+                                 bool                           $socketUseSSL = TRUE,
+                                 string                         $enabledProtocols = 'TLSv1.2',
+                                 LogInterface                   $logger = NULL,
+                                 MessageSequenceNumberInterface $msgSeqNumManager = NULL ) {
         $this->senderCompID      = $senderCompID;
         $this->password          = $password;
         $this->socketConnectHost = $socketConnectHost;
@@ -79,6 +84,12 @@ class GLMXFixClient {
             $this->logger = new DebugLogger();
         else:
             $this->logger = $logger;
+        endif;
+
+        if ( $msgSeqNumManager === NULL ):
+            throw new Exception( "You MUST pass in a class that implements the MessageSequenceNumberInterface" );
+        else:
+            $this->messageSequenceNumberManager = $msgSeqNumManager;
         endif;
 
 
@@ -168,7 +179,7 @@ class GLMXFixClient {
      * @throws ParseException
      * @throws SocketNotConnectedException
      */
-    public function login( int  $expectedSequenceNumber = NULL,
+    public function login( //int  $expectedSequenceNumber = NULL,
                            bool $resetSeqNumFlag = FALSE ): float {
         echo "Sending Logon (A) message...\n";
 
@@ -191,9 +202,9 @@ class GLMXFixClient {
 
 
         // A failed login attempt will increment the nextOutgoingMessageSequenceNumber in the GLMX system, but not in this class.
-        if ( $expectedSequenceNumber ):
-            $this->nextOutgoingMsgSeqNum = (string)$expectedSequenceNumber;
-        endif;
+//        if ( $expectedSequenceNumber ):
+//            $this->nextOutgoingMsgSeqNum = (string)$expectedSequenceNumber;
+//        endif;
 
         $message = $this->generateFixMessage( FixMessage::Logon, $logonFields );
 
@@ -354,7 +365,7 @@ class GLMXFixClient {
 
         $this->lastSentActivity = time();
 
-        $this->logger->log( new FixMessage(FixMessageParser::parseFixFieldsFromRaw( $message )) );
+        $this->logger->log( new FixMessage( FixMessageParser::parseFixFieldsFromRaw( $message ) ) );
         $this->logger->logRaw( $message );
         return $bytesWritten;
     }
@@ -435,7 +446,9 @@ class GLMXFixClient {
                     $headerFields[ $tag ] = $msgType;
                     break;
                 case FixMessage::MSG_SEQ_NUM:
-                    $headerFields[ $tag ] = (string)$this->nextOutgoingMsgSeqNum;
+                    $this->lastMsgSeqNum         = $this->messageSequenceNumberManager->getLastMessageSequenceNumber();
+                    $this->nextOutgoingMsgSeqNum = $this->lastMsgSeqNum + 1;
+                    $headerFields[ $tag ]        = (string)$this->nextOutgoingMsgSeqNum;
                     break;
                 case FixMessage::SENDER_COMP_ID:
                     $headerFields[ $tag ] = $this->senderCompID;
@@ -633,7 +646,6 @@ class GLMXFixClient {
         endif;
 
 
-
         // --- Process Parsed Messages ---
         $content = $this->parser->parseNextMessage();
 
@@ -658,15 +670,4 @@ class GLMXFixClient {
     }
 
 
-    /**
-     * @return int
-     */
-    public function getNextOutgoingMsgSeqNum(): int {
-        return $this->nextOutgoingMsgSeqNum;
-    }
-
-
-    public function setNextOutgoingMsgSeqNum( int $nextSeqNum ) {
-        $this->nextOutgoingMsgSeqNum = $nextSeqNum;
-    }
 }
