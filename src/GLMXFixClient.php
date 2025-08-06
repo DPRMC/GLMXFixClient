@@ -51,20 +51,21 @@ class GLMXFixClient {
     protected int  $lastReceivedActivity;
 
 
-    protected LogInterface                   $logger;
-    protected MessageSequenceNumberInterface $messageSequenceNumberManager;
+    protected LogInterface                          $logger;
+    protected MessageSequenceNumberManagerInterface $messageSequenceNumberManager;
 
-    public function __construct( string                         $senderCompID = 'EXAMPLE',
-                                 string                         $password = '<PASSWORD>',
-                                 string                         $socketConnectHost = 'fixgw.stg.glmx.com',
-                                 int                            $socketConnectPort = 4303,
-                                 string                         $targetCompID = 'GLMX',
-                                 int                            $heartBtInt = 30,
-                                 string                         $beginString = 'FIX.4.4',
-                                 bool                           $socketUseSSL = TRUE,
-                                 string                         $enabledProtocols = 'TLSv1.2',
-                                 LogInterface                   $logger = NULL,
-                                 MessageSequenceNumberInterface $msgSeqNumManager = NULL ) {
+    public function __construct( LogInterface                          $logger,
+                                 MessageSequenceNumberManagerInterface $msgSeqNumManager,
+                                 string                                $senderCompID = 'EXAMPLE',
+                                 string                                $password = '<PASSWORD>',
+                                 string                                $socketConnectHost = 'fixgw.stg.glmx.com',
+                                 int                                   $socketConnectPort = 4303,
+                                 string                                $targetCompID = 'GLMX',
+                                 int                                   $heartBtInt = 30,
+                                 string                                $beginString = 'FIX.4.4',
+                                 bool                                  $socketUseSSL = TRUE,
+                                 string                                $enabledProtocols = 'TLSv1.2'
+    ) {
         $this->senderCompID      = $senderCompID;
         $this->password          = $password;
         $this->socketConnectHost = $socketConnectHost;
@@ -80,19 +81,8 @@ class GLMXFixClient {
 
         $this->lastSentActivity = time();
 
-        if ( $logger === NULL ):
-            $this->logger = new DebugLogger();
-        else:
-            $this->logger = $logger;
-        endif;
-
-        if ( $msgSeqNumManager === NULL ):
-            throw new Exception( "You MUST pass in a class that implements the MessageSequenceNumberInterface" );
-        else:
-            $this->messageSequenceNumberManager = $msgSeqNumManager;
-        endif;
-
-
+        $this->logger                       = $logger;
+        $this->messageSequenceNumberManager = $msgSeqNumManager;
     }
 
 
@@ -180,7 +170,7 @@ class GLMXFixClient {
      * @throws SocketNotConnectedException
      */
     public function login( //int  $expectedSequenceNumber = NULL,
-                           bool $resetSeqNumFlag = FALSE ): float {
+        bool $resetSeqNumFlag = FALSE ): float {
         echo "Sending Logon (A) message...\n";
 
         $logonFields = [
