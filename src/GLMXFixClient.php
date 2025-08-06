@@ -199,8 +199,6 @@ class GLMXFixClient {
         $message = $this->generateFixMessage( FixMessage::Logon, $logonFields );
 
         $this->sendRaw( $message );
-        $this->logger->log( new FixMessage( FixMessageParser::parseFixFieldsFromRaw( $message ) ) );
-        $this->logger->logRaw( $message );
 
         $logonAckReceived = FALSE;
         $startTime        = microtime( TRUE ); // Use microtime for more precise timeout checking
