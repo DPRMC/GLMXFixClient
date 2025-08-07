@@ -341,12 +341,21 @@ class GLMXFixClient {
     public function sendResendRequestResponses( int $startMsgSeqNum, int $endMsgSeqNum = 0 ): void {
         $fixMessagesToResend = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums( $startMsgSeqNum, $endMsgSeqNum );
 
+        $adminMessageFlags = [];
+        foreach ( $fixMessagesToResend as $message ):
+            if ( array_key_exists( $message[ FixMessage::MSG_TYPE ], FixMessage::$administrativeMessageTypes ) ):
+                $adminMessageFlags[ FixMessage::MSG_SEQ_NUM ] = 1;
+            else:
+                $adminMessageFlags[ FixMessage::MSG_SEQ_NUM ] = 0;
+            endif;
+        endforeach;
+
+
         /**
          * @var array $arrayFixMessage
          */
         foreach ( $fixMessagesToResend as $arrayFixMessage ):
             $stringMessage = $this->generateFixMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ], $arrayFixMessage );
-
 
 
             $this->sendRaw( $stringMessage );
@@ -435,6 +444,22 @@ class GLMXFixClient {
         return str_pad( (string)( $sum % 256 ), 3, '0', STR_PAD_LEFT );
     }
 
+
+    protected function generateSequenceResetMessageWithGapFillFlag(): string {
+        // Standard FIX header field order (relevant for MsgType 'A' to 'Z' excluding '8' and '9' which are inserted dynamically)
+        // See: https://www.fixtrading.org/standards/tagvalue-online/
+        $standardHeaderOrder = [
+            '35', // MsgType
+            '34', // MsgSeqNum
+            '49', // SenderCompID
+            '52', // SendingTime
+            '56', // TargetCompID
+            '98', // EncryptMethod (added as per GLMX admin feedback)
+            // Add other standard header fields here if needed, in their numerical order
+        ];
+        $headerFields        = [];
+    }
+
     /**
      * Generates a complete FIX message string.
      *
@@ -443,7 +468,7 @@ class GLMXFixClient {
      *
      * @return string The complete FIX message.
      */
-    protected function generateFixMessage( string $msgType, array $fields = [] ): string {
+    protected function generateFixMessage( string $msgType, array $fields = [], bool $isResent = FALSE, $nextNonAdminMsgSeqNum = NULL ): string {
         // Standard FIX header field order (relevant for MsgType 'A' to 'Z' excluding '8' and '9' which are inserted dynamically)
         // See: https://www.fixtrading.org/standards/tagvalue-online/
         $standardHeaderOrder = [
@@ -498,6 +523,18 @@ class GLMXFixClient {
         // This tag is not defined for the logout message.
         if ( $msgType == FixMessage::Logout ):
             unset( $headerFields[ FixMessage::ENCRYPT_METHOD ] );
+        endif;
+
+
+        if ( $isResent ):
+            // IF an Admin Message: Logon, Heartbeat, etc...
+            if ( array_key_exists( $headerFields[ FixMessage::MSG_TYPE ], FixMessage::$administrativeMessageTypes ) ):
+                $headerFields[ FixMessage::MSG_TYPE ]      = FixMessage::SequenceReset;
+                $headerFields[ FixMessage::GAP_FILL_FLAG ] = 'Y';
+                $headerFields[ FixMessage::NEW_SEQ_NO ]    = $nextNonAdminMsgSeqNum;
+            endif;
+
+            $headerFields[ FixMessage::POSS_DUP_FLAG ] = 'Y';
         endif;
 
 
