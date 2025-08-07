@@ -333,15 +333,15 @@ class GLMXFixClient {
      * @return void
      * @throws Exception
      */
-    public function sendResendRequestResponses(int $startMsgSeqNum, int $endMsgSeqNum=0): void {
-        $fixMessagesToResend = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums($startMsgSeqNum, $endMsgSeqNum);
+    public function sendResendRequestResponses( int $startMsgSeqNum, int $endMsgSeqNum = 0 ): void {
+        $fixMessagesToResend = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums( $startMsgSeqNum, $endMsgSeqNum );
 
         /**
          * @var array $arrayFixMessage
          */
-        foreach($fixMessagesToResend as $arrayFixMessage):
-            $FixMessage = $this->generateFixMessage($arrayFixMessage[FixMessage::MSG_TYPE], $arrayFixMessage);
-            $this->sendRaw($FixMessage);
+        foreach ( $fixMessagesToResend as $arrayFixMessage ):
+            $FixMessage = $this->generateFixMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ], $arrayFixMessage );
+            $this->sendRaw( $FixMessage );
         endforeach;
     }
 
@@ -376,7 +376,7 @@ class GLMXFixClient {
         $this->lastSentActivity = time();
 
         $this->logger->log( new FixMessage( FixMessageParser::parseFixFieldsFromRaw( $message ) ) );
-        $this->logger->logRaw( $message );
+        //$this->logger->logRaw( $message );
         return $bytesWritten;
     }
 
