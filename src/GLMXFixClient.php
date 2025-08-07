@@ -332,6 +332,11 @@ class GLMXFixClient {
      * @param int $endMsgSeqNum
      * @return void
      * @throws Exception
+     *
+     * Any administrative messages are replaced with Sequence Reset (4) messages that
+     * - have a GapFillFlag (123) field set to “Y”, indicating
+     * - a NewSeqNo (36) which corresponds to the next non-administrative message.
+     * All such messages should have PossDupFlag (43) set to “Y” as well.
      */
     public function sendResendRequestResponses( int $startMsgSeqNum, int $endMsgSeqNum = 0 ): void {
         $fixMessagesToResend = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums( $startMsgSeqNum, $endMsgSeqNum );
@@ -340,8 +345,11 @@ class GLMXFixClient {
          * @var array $arrayFixMessage
          */
         foreach ( $fixMessagesToResend as $arrayFixMessage ):
-            $FixMessage = $this->generateFixMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ], $arrayFixMessage );
-            $this->sendRaw( $FixMessage );
+            $stringMessage = $this->generateFixMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ], $arrayFixMessage );
+
+
+
+            $this->sendRaw( $stringMessage );
         endforeach;
     }
 

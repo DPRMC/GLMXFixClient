@@ -50,6 +50,17 @@ class FixMessage {
         self::AllocationReport         => 'AllocationReport',
     ];
 
+
+    public static array $administrativeMessageTypes = [
+        self::Logon         => 'Logon',
+        self::Logout        => 'Logout',
+        self::Heartbeat     => 'Heartbeat',
+        self::TestRequest   => 'TestRequest',
+        self::ResendRequest => 'ResendRequest',
+        self::Reject        => 'Reject',
+        self::SequenceReset => 'SequenceReset',
+    ];
+
     /**
      * Retrieves the name of a FIX message type given its code.
      * @param string $messageCode The FIX message code.
