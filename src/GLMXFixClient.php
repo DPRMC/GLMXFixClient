@@ -54,8 +54,11 @@ class GLMXFixClient {
     protected LogInterface                          $logger;
     protected MessageSequenceNumberManagerInterface $messageSequenceNumberManager;
 
+    protected FixMessageRepositoryInterface $fixMessageRepository;
+
     public function __construct( LogInterface                          $logger,
                                  MessageSequenceNumberManagerInterface $msgSeqNumManager,
+                                 FixMessageRepositoryInterface         $fixMessageRepository,
                                  string                                $senderCompID = 'EXAMPLE',
                                  string                                $password = '<PASSWORD>',
                                  string                                $socketConnectHost = 'fixgw.stg.glmx.com',
@@ -83,6 +86,7 @@ class GLMXFixClient {
 
         $this->logger                       = $logger;
         $this->messageSequenceNumberManager = $msgSeqNumManager;
+        $this->fixMessageRepository         = $fixMessageRepository;
     }
 
 
@@ -169,8 +173,8 @@ class GLMXFixClient {
      * @throws ParseException
      * @throws SocketNotConnectedException
      */
-    public function login( //int  $expectedSequenceNumber = NULL,
-        bool $resetSeqNumFlag = FALSE ): float {
+//    public function login( int  $expectedSequenceNumber = NULL, bool $resetSeqNumFlag = FALSE ): float {
+    public function login( bool $resetSeqNumFlag = FALSE ): float {
         echo "Sending Logon (A) message...\n";
 
         $logonFields = [
@@ -322,6 +326,24 @@ class GLMXFixClient {
         $this->sendRaw( $message );
     }
 
+
+    /**
+     * @param int $startMsgSeqNum
+     * @param int $endMsgSeqNum
+     * @return void
+     * @throws Exception
+     */
+    public function sendResendRequestResponses(int $startMsgSeqNum, int $endMsgSeqNum=0): void {
+        $fixMessagesToResend = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums($startMsgSeqNum, $endMsgSeqNum);
+
+        /**
+         * @var array $arrayFixMessage
+         */
+        foreach($fixMessagesToResend as $arrayFixMessage):
+            $FixMessage = $this->generateFixMessage($arrayFixMessage[FixMessage::MSG_TYPE], $arrayFixMessage);
+            $this->sendRaw($FixMessage);
+        endforeach;
+    }
 
     /**
      * Returns the raw stream socket resource.
