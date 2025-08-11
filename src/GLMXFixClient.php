@@ -328,6 +328,7 @@ class GLMXFixClient {
 
 
     /**
+     * @param Carbon $date The UTC date of messages that need to be resent.
      * @param int $startMsgSeqNum
      * @param int $endMsgSeqNum
      * @return void
@@ -338,8 +339,8 @@ class GLMXFixClient {
      * - a NewSeqNo (36) which corresponds to the next non-administrative message.
      * All such messages should have PossDupFlag (43) set to “Y” as well.
      */
-    public function sendResendRequestResponses( int $startMsgSeqNum, int $endMsgSeqNum = 0 ): void {
-        $fixMessagesToResend = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums( $startMsgSeqNum, $endMsgSeqNum );
+    public function sendResendRequestResponses(Carbon $date, int $startMsgSeqNum, int $endMsgSeqNum = 0 ): void {
+        $fixMessagesToResend = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums($date, $startMsgSeqNum, $endMsgSeqNum );
 
         $adminMessageFlags = [];
         foreach ( $fixMessagesToResend as $message ):
