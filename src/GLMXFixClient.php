@@ -51,6 +51,9 @@ class GLMXFixClient {
     protected int  $lastReceivedActivity;
 
 
+    protected bool $logged_in = false;
+
+
     protected LogInterface                          $logger;
     protected MessageSequenceNumberManagerInterface $messageSequenceNumberManager;
 
@@ -725,5 +728,13 @@ class GLMXFixClient {
         endif;
     }
 
+
+    public function isLoggedIn(): bool {
+        return $this->logged_in;
+    }
+
+    public function setLoggedIn( bool $logged_in ): void {
+        $this->logged_in = $logged_in;
+    }
 
 }
