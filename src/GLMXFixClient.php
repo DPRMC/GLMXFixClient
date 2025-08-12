@@ -3,6 +3,7 @@
 namespace DPRMC\GLMXFixClient;
 
 use Carbon\Carbon;
+use Carbon\CarbonInterval;
 use DPRMC\GLMXFixClient\Exceptions\ClientNotRunningException;
 use DPRMC\GLMXFixClient\Exceptions\ConnectionClosedByPeerException;
 use DPRMC\GLMXFixClient\Exceptions\GenericFixMessageException;
@@ -51,7 +52,7 @@ class GLMXFixClient {
     protected int  $lastReceivedActivity;
 
 
-    protected bool $logged_in = false;
+    protected bool $logged_in = FALSE;
 
 
     protected LogInterface                          $logger;
@@ -342,8 +343,8 @@ class GLMXFixClient {
      * - a NewSeqNo (36) which corresponds to the next non-administrative message.
      * All such messages should have PossDupFlag (43) set to “Y” as well.
      */
-    public function sendResendRequestResponses(Carbon $date, int $startMsgSeqNum, int $endMsgSeqNum = 0 ): void {
-        $fixMessagesToResend = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums($date, $startMsgSeqNum, $endMsgSeqNum, -1 );
+    public function sendResendRequestResponses( Carbon $date, int $startMsgSeqNum, int $endMsgSeqNum = 0 ): void {
+        $fixMessagesToResend = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums( $date, $startMsgSeqNum, $endMsgSeqNum, -1 );
 
         $adminMessageFlags = [];
         foreach ( $fixMessagesToResend as $message ):
@@ -361,18 +362,17 @@ class GLMXFixClient {
          * @var array $arrayFixMessage
          */
         foreach ( $fixMessagesToResend as $arrayFixMessage ):
-            $stringMessage = $this->generateFixMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ], $arrayFixMessage );
+            $stringMessage              = $this->generateFixMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ], $arrayFixMessage );
             $stringMessagesToBeResent[] = $stringMessage;
         endforeach;
 
 
-
-        if( $this->debug):
-            $this->_debug("There are " . count($stringMessagesToBeResent) . " messages sent to resend requests." );
-            foreach( $stringMessagesToBeResent as $string ):
+        if ( $this->debug ):
+            $this->_debug( "There are " . count( $stringMessagesToBeResent ) . " messages sent to resend requests." );
+            foreach ( $stringMessagesToBeResent as $string ):
                 $this->_debug( $string );
             endforeach;
-            $this->_debug("Returning without ACTUALLY resending the messages.");
+            $this->_debug( "Returning without ACTUALLY resending the messages." );
             return;
         endif;
 
@@ -752,4 +752,26 @@ class GLMXFixClient {
         $this->logged_in = $logged_in;
     }
 
+
+    /**
+     * GLMX resets its FIX message sequence counts daily from 23:45:00 to 00:05:00 UTC.
+     * @return CarbonInterval Ex: to be used in client code as `echo $interval->forHumans();`
+     * @throws Exception
+     */
+    public static function timeUntilMessageSequenceCountReset(): CarbonInterval {
+        $start    = Carbon::now( 'UTC' );
+        $end      = Carbon::create( $start->year, $start->month, $start->day, 23, 45, 00, 'UTC' );
+        $interval = $end->diffAsCarbonInterval( $start );
+
+        return $interval;
+    }
+
+    public static function glmxIsClosed(): bool {
+        $now        = Carbon::now( 'UTC' );
+        $tomorrow   = $now->copy()->addDay();
+        $startClose = Carbon::create( $now->year, $now->month, $now->day, 23, 45, 00, 'UTC' );
+        $endClose   = Carbon::create( $tomorrow->year, $tomorrow->month, $tomorrow->day, 0, 5, 00, 'UTC' );
+
+        return $now->between( $startClose, $endClose );
+    }
 }
