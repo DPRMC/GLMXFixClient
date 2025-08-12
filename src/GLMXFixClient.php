@@ -343,7 +343,7 @@ class GLMXFixClient {
      * All such messages should have PossDupFlag (43) set to “Y” as well.
      */
     public function sendResendRequestResponses(Carbon $date, int $startMsgSeqNum, int $endMsgSeqNum = 0 ): void {
-        $fixMessagesToResend = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums($date, $startMsgSeqNum, $endMsgSeqNum );
+        $fixMessagesToResend = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums($date, $startMsgSeqNum, $endMsgSeqNum, -1 );
 
         $adminMessageFlags = [];
         foreach ( $fixMessagesToResend as $message ):
@@ -355,14 +355,29 @@ class GLMXFixClient {
         endforeach;
 
 
+        $stringMessagesToBeResent = [];
+
         /**
          * @var array $arrayFixMessage
          */
         foreach ( $fixMessagesToResend as $arrayFixMessage ):
             $stringMessage = $this->generateFixMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ], $arrayFixMessage );
+            $stringMessagesToBeResent[] = $stringMessage;
+        endforeach;
 
 
-            $this->sendRaw( $stringMessage );
+
+        if( $this->debug):
+            $this->_debug("There are " . count($stringMessagesToBeResent) . " messages sent to resend requests." );
+            foreach( $stringMessagesToBeResent as $string ):
+                $this->_debug( $string );
+            endforeach;
+            $this->_debug("Returning without ACTUALLY resending the messages.");
+            return;
+        endif;
+
+        foreach ( $stringMessagesToBeResent as $string ):
+            $this->sendRaw( $string );
         endforeach;
     }
 
