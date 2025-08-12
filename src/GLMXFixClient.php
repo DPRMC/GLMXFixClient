@@ -605,6 +605,10 @@ class GLMXFixClient {
         $this->debug = $debug;
     }
 
+    public function getDebug(): bool {
+        return $this->debug;
+    }
+
     protected function _debug( string $message ): void {
         if ( $this->debug ):
             echo $message . "\n";
