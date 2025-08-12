@@ -774,4 +774,10 @@ class GLMXFixClient {
 
         return $now->between( $startClose, $endClose );
     }
+
+    public static function getCloseTimeForTimezone( string $timezone ): Carbon {
+        $now        = Carbon::now( 'UTC' );
+        $startClose = Carbon::create( $now->year, $now->month, $now->day, 23, 45, 00, 'UTC' );
+        return $startClose->timezone($timezone);
+    }
 }
