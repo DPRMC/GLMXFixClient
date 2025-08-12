@@ -18,10 +18,6 @@ class FixMessage {
     const SequenceReset = '4';
 
 
-
-
-
-
     // FIX Application Level Messages
     const BusinessRejectMessage    = 'j';
     const NewOrderSingle           = 'D';
@@ -33,6 +29,46 @@ class FixMessage {
     const AllocationInstructionAck = 'P';
     const AllocationReport         = 'AS';
 
+
+    public static array $messageTypes = [
+        self::Logon         => 'Logon',
+        self::Logout        => 'Logout',
+        self::Heartbeat     => 'Heartbeat',
+        self::TestRequest   => 'TestRequest',
+        self::ResendRequest => 'ResendRequest',
+        self::Reject        => 'Reject',
+        self::SequenceReset => 'SequenceReset',
+
+        self::BusinessRejectMessage    => 'BusinessRejectMessage',
+        self::NewOrderSingle           => 'NewOrderSingle',
+        self::NewOrderList             => 'NewOrderList',
+        self::OrderCancelRequest       => 'OrderCancelRequest',
+        self::ExecutionReport          => 'ExecutionReport',
+        self::TradeCaptureReport       => 'TradeCaptureReport',
+        self::AllocationInstruction    => 'AllocationInstruction',
+        self::AllocationInstructionAck => 'AllocationInstructionAck',
+        self::AllocationReport         => 'AllocationReport',
+    ];
+
+
+    public static array $administrativeMessageTypes = [
+        self::Logon         => 'Logon',
+        self::Logout        => 'Logout',
+        self::Heartbeat     => 'Heartbeat',
+        self::TestRequest   => 'TestRequest',
+        self::ResendRequest => 'ResendRequest',
+        self::Reject        => 'Reject',
+        self::SequenceReset => 'SequenceReset',
+    ];
+
+    /**
+     * Retrieves the name of a FIX message type given its code.
+     * @param string $messageCode The FIX message code.
+     * @return string|null The message name or null if not found.
+     */
+    public static function getMessageName( string $messageCode ): ?string {
+        return self::$messageTypes[ $messageCode ] ?? NULL;
+    }
 
     // FIX TAGS
     // FIX Session Level Fields (Section: FIX SESSION HANDLING)
@@ -259,14 +295,24 @@ class FixMessage {
 
     const ENCRYPT_METHOD = 98;
 
+    // Reject message constants.
+    const REF_MSG_TYPE = 372;
+    //const REF_MSG_SEQ_NUM       = 373;
+    const SESSION_REJECT_REASON = 373;
+    const REF_MSG_SEQ_NUM       = 45;
+
+
+    //const SESSION_REJECT_REASON = 371;
+    const REF_TAG_ID = 371;
+
     public function __construct( array $content = [] ) {
         $this->content = $content;
     }
 
 
     public function getMessageType(): string {
-        if( isset($this->content[ self::MSG_TYPE ]) ):
-            return (string) $this->content[ self::MSG_TYPE ];
+        if ( isset( $this->content[ self::MSG_TYPE ] ) ):
+            return (string)$this->content[ self::MSG_TYPE ];
         endif;
     }
 

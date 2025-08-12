@@ -3,6 +3,7 @@
 namespace DPRMC\GLMXFixClient;
 
 use Carbon\Carbon;
+use Carbon\CarbonInterval;
 use DPRMC\GLMXFixClient\Exceptions\ClientNotRunningException;
 use DPRMC\GLMXFixClient\Exceptions\ConnectionClosedByPeerException;
 use DPRMC\GLMXFixClient\Exceptions\GenericFixMessageException;
@@ -32,7 +33,13 @@ class GLMXFixClient {
      */
     protected $socket = NULL; // Initialize to null
 
-    protected int $nextOutgoingMsgSeqNum = 1;
+
+    protected int $lastMsgSeqNum = 0;
+
+    /**
+     * @var int
+     */
+    protected int $nextOutgoingMsgSeqNum = 0;
 
     // Add a parser property to handle incoming messages during login
     protected FixMessageParser $parser;
@@ -45,18 +52,27 @@ class GLMXFixClient {
     protected int  $lastReceivedActivity;
 
 
-    protected LogInterface $logger;
+    protected bool $logged_in = FALSE;
 
-    public function __construct( string       $senderCompID = 'EXAMPLE',
-                                 string       $password = '<PASSWORD>',
-                                 string       $socketConnectHost = 'fixgw.stg.glmx.com',
-                                 int          $socketConnectPort = 4303,
-                                 string       $targetCompID = 'GLMX',
-                                 int          $heartBtInt = 30,
-                                 string       $beginString = 'FIX.4.4',
-                                 bool         $socketUseSSL = TRUE,
-                                 string       $enabledProtocols = 'TLSv1.2',
-                                 LogInterface $logger = NULL ) {
+
+    protected LogInterface                          $logger;
+    protected MessageSequenceNumberManagerInterface $messageSequenceNumberManager;
+
+    protected FixMessageRepositoryInterface $fixMessageRepository;
+
+    public function __construct( LogInterface                          $logger,
+                                 MessageSequenceNumberManagerInterface $msgSeqNumManager,
+                                 FixMessageRepositoryInterface         $fixMessageRepository,
+                                 string                                $senderCompID = 'EXAMPLE',
+                                 string                                $password = '<PASSWORD>',
+                                 string                                $socketConnectHost = 'fixgw.stg.glmx.com',
+                                 int                                   $socketConnectPort = 4303,
+                                 string                                $targetCompID = 'GLMX',
+                                 int                                   $heartBtInt = 30,
+                                 string                                $beginString = 'FIX.4.4',
+                                 bool                                  $socketUseSSL = TRUE,
+                                 string                                $enabledProtocols = 'TLSv1.2'
+    ) {
         $this->senderCompID      = $senderCompID;
         $this->password          = $password;
         $this->socketConnectHost = $socketConnectHost;
@@ -72,13 +88,9 @@ class GLMXFixClient {
 
         $this->lastSentActivity = time();
 
-        if ( $logger === NULL ):
-            $this->logger = new DebugLogger();
-        else:
-            $this->logger = $logger;
-        endif;
-
-
+        $this->logger                       = $logger;
+        $this->messageSequenceNumberManager = $msgSeqNumManager;
+        $this->fixMessageRepository         = $fixMessageRepository;
     }
 
 
@@ -144,7 +156,7 @@ class GLMXFixClient {
         endif;
 
         // 5. Set the stream to non-blocking mode
-        if ( !stream_set_blocking( $this->socket, FALSE ) ):
+        if ( ! stream_set_blocking( $this->socket, FALSE ) ):
             fclose( $this->socket );
             throw new Exception( "Failed to set stream to non-blocking mode." );
         endif;
@@ -156,10 +168,17 @@ class GLMXFixClient {
     /**
      * Initiates a FIX session by sending a Logon (A) message and waiting for confirmation.
      *
+     * @param int|NULL $expectedSequenceNumber
+     * @param bool|NULL $resetSeqNumFlag Only use in the testing environment. See comments below around parameter usage.
      * @return float Microtime timestamp when the last message was sent during handshake, or throws exception.
-     * @throws \Exception If connection is not established, message sending fails, or handshake times out/fails.
+     * @throws \Exception
+     * @throws GenericFixMessageException
+     * @throws MsgSeqNumTooLowException
+     * @throws ParseException
+     * @throws SocketNotConnectedException
      */
-    public function login( int $expectedSequenceNumber = NULL ): float {
+//    public function login( int  $expectedSequenceNumber = NULL, bool $resetSeqNumFlag = FALSE ): float {
+    public function login( bool $resetSeqNumFlag = FALSE ): float {
         echo "Sending Logon (A) message...\n";
 
         $logonFields = [
@@ -169,15 +188,25 @@ class GLMXFixClient {
         ];
 
 
-        // A failed login attempt will increment the nextOutgoingMessageSequenceNumber in the GLMX system, but not in this class.
-        if ( $expectedSequenceNumber ):
-            $this->nextOutgoingMsgSeqNum = (string)$expectedSequenceNumber;
+        /**
+         * In the event the consumer loses session data, the reconnection can be made with providing
+         * with ResetSeqNumFlag (141) =Y in the Logon message, which will instruct GLMX to clear the session, which
+         * can lead to data loss.
+         * This should only be done under exceptional circumstances or in test environments.
+         */
+        if ( $resetSeqNumFlag ):
+            $logonFields[ FixMessage::RESET_SEQ_NUM_FLAG ] = 'Y';
         endif;
+
+
+        // A failed login attempt will increment the nextOutgoingMessageSequenceNumber in the GLMX system, but not in this class.
+//        if ( $expectedSequenceNumber ):
+//            $this->nextOutgoingMsgSeqNum = (string)$expectedSequenceNumber;
+//        endif;
 
         $message = $this->generateFixMessage( FixMessage::Logon, $logonFields );
 
         $this->sendRaw( $message );
-        $this->logger->logRaw( $message );
 
         $logonAckReceived = FALSE;
         $startTime        = microtime( TRUE ); // Use microtime for more precise timeout checking
@@ -214,7 +243,7 @@ class GLMXFixClient {
                 $this->parser->appendData( $rawData );
 
 
-                while ( ($parsedMessage = $this->parser->parseNextMessage()) !== NULL ):
+                while ( ( $parsedMessage = $this->parser->parseNextMessage() ) !== NULL ):
                     $this->_debug( '--- Message Parsed During Login Handshake ---' );
 
                     $fixMessage = new FixMessage( $parsedMessage );
@@ -289,21 +318,68 @@ class GLMXFixClient {
      *
      * 8=FIX.4.2^9=79^35=4^49=SellSide^56=BuySide^34=1^52=20250709-17:30:00.000^36=100^10=104^
      */
-    public function sequenceReset() {
+    public function sequenceReset(): void {
         //
         $fields = [
-            '108' => (string)$this->heartBtInt, // HeartBtInt
-            '554' => $this->password,           // Password
-            '98'  => '0',                       // EncryptMethod = None (as required by GLMX admin)
+            FixMessage::HEART_BT_INT   => (string)$this->heartBtInt, // HeartBtInt
+            FixMessage::PASSWORD       => $this->password,           // Password
+            FixMessage::ENCRYPT_METHOD => '0',
         ];
-
 
         $message = $this->generateFixMessage( FixMessage::SequenceReset, $fields );
         $this->sendRaw( $message );
-
-        FixMessage::SequenceReset;
     }
 
+
+    /**
+     * @param Carbon $date The UTC date of messages that need to be resent.
+     * @param int $startMsgSeqNum
+     * @param int $endMsgSeqNum
+     * @return void
+     * @throws Exception
+     *
+     * Any administrative messages are replaced with Sequence Reset (4) messages that
+     * - have a GapFillFlag (123) field set to “Y”, indicating
+     * - a NewSeqNo (36) which corresponds to the next non-administrative message.
+     * All such messages should have PossDupFlag (43) set to “Y” as well.
+     */
+    public function sendResendRequestResponses( Carbon $date, int $startMsgSeqNum, int $endMsgSeqNum = 0 ): void {
+        $fixMessagesToResend = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums( $date, $startMsgSeqNum, $endMsgSeqNum, -1 );
+
+        $adminMessageFlags = [];
+        foreach ( $fixMessagesToResend as $message ):
+            if ( array_key_exists( $message[ FixMessage::MSG_TYPE ], FixMessage::$administrativeMessageTypes ) ):
+                $adminMessageFlags[ FixMessage::MSG_SEQ_NUM ] = 1;
+            else:
+                $adminMessageFlags[ FixMessage::MSG_SEQ_NUM ] = 0;
+            endif;
+        endforeach;
+
+
+        $stringMessagesToBeResent = [];
+
+        /**
+         * @var array $arrayFixMessage
+         */
+        foreach ( $fixMessagesToResend as $arrayFixMessage ):
+            $stringMessage              = $this->generateFixMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ], $arrayFixMessage );
+            $stringMessagesToBeResent[] = $stringMessage;
+        endforeach;
+
+
+        if ( $this->debug ):
+            $this->_debug( "There are " . count( $stringMessagesToBeResent ) . " messages sent to resend requests." );
+            foreach ( $stringMessagesToBeResent as $string ):
+                $this->_debug( $string );
+            endforeach;
+            $this->_debug( "Returning without ACTUALLY resending the messages." );
+            return;
+        endif;
+
+        foreach ( $stringMessagesToBeResent as $string ):
+            $this->sendRaw( $string );
+        endforeach;
+    }
 
     /**
      * Returns the raw stream socket resource.
@@ -324,7 +400,7 @@ class GLMXFixClient {
      * @throws \Exception
      */
     protected function sendRaw( string $message ): int|false {
-        if ( !$this->socket ):
+        if ( ! $this->socket ):
             throw new Exception( "Socket not connected." );
         endif;
         $bytesWritten = @fwrite( $this->socket, $message );
@@ -334,6 +410,9 @@ class GLMXFixClient {
         $this->_debug( "Sent: " . str_replace( self::SOH, '|', $message ) );
 
         $this->lastSentActivity = time();
+
+        $this->logger->log( new FixMessage( FixMessageParser::parseFixFieldsFromRaw( $message ) ) );
+        //$this->logger->logRaw( $message );
         return $bytesWritten;
     }
 
@@ -347,7 +426,7 @@ class GLMXFixClient {
      * @throws SocketNotConnectedException
      */
     public function readRaw( int $length = 2048 ): string|false {
-        if ( !$this->socket ):
+        if ( ! $this->socket ):
             throw new SocketNotConnectedException();
         endif;
         $data = @fread( $this->socket, $length );
@@ -381,18 +460,34 @@ class GLMXFixClient {
         for ( $i = 0; $i < strlen( $message ); $i++ ):
             $sum += ord( $message[ $i ] );
         endfor;
-        return str_pad( (string)($sum % 256), 3, '0', STR_PAD_LEFT );
+        return str_pad( (string)( $sum % 256 ), 3, '0', STR_PAD_LEFT );
+    }
+
+
+    protected function generateSequenceResetMessageWithGapFillFlag(): string {
+        // Standard FIX header field order (relevant for MsgType 'A' to 'Z' excluding '8' and '9' which are inserted dynamically)
+        // See: https://www.fixtrading.org/standards/tagvalue-online/
+        $standardHeaderOrder = [
+            '35', // MsgType
+            '34', // MsgSeqNum
+            '49', // SenderCompID
+            '52', // SendingTime
+            '56', // TargetCompID
+            '98', // EncryptMethod (added as per GLMX admin feedback)
+            // Add other standard header fields here if needed, in their numerical order
+        ];
+        $headerFields        = [];
     }
 
     /**
      * Generates a complete FIX message string.
      *
-     * @param string                $msgType The MsgType (tag 35).
-     * @param array<string, string> $fields  An associative array of FIX tags and their values (excluding header and trailer).
+     * @param string $msgType The MsgType (tag 35).
+     * @param array<string, string> $fields An associative array of FIX tags and their values (excluding header and trailer).
      *
      * @return string The complete FIX message.
      */
-    protected function generateFixMessage( string $msgType, array $fields = [] ): string {
+    protected function generateFixMessage( string $msgType, array $fields = [], bool $isResent = FALSE, $nextNonAdminMsgSeqNum = NULL ): string {
         // Standard FIX header field order (relevant for MsgType 'A' to 'Z' excluding '8' and '9' which are inserted dynamically)
         // See: https://www.fixtrading.org/standards/tagvalue-online/
         $standardHeaderOrder = [
@@ -413,7 +508,9 @@ class GLMXFixClient {
                     $headerFields[ $tag ] = $msgType;
                     break;
                 case FixMessage::MSG_SEQ_NUM:
-                    $headerFields[ $tag ] = (string)$this->nextOutgoingMsgSeqNum;
+                    $this->lastMsgSeqNum         = $this->messageSequenceNumberManager->getLastMessageSequenceNumber();
+                    $this->nextOutgoingMsgSeqNum = $this->lastMsgSeqNum + 1;
+                    $headerFields[ $tag ]        = (string)$this->nextOutgoingMsgSeqNum;
                     break;
                 case FixMessage::SENDER_COMP_ID:
                     $headerFields[ $tag ] = $this->senderCompID;
@@ -437,6 +534,29 @@ class GLMXFixClient {
         endforeach;
 
 
+        // No need to send the password if this is not a Logon message.
+        if ( $msgType != FixMessage::Logon ):
+            unset( $headerFields[ FixMessage::PASSWORD ] );
+        endif;
+
+        // This tag is not defined for the logout message.
+        if ( $msgType == FixMessage::Logout ):
+            unset( $headerFields[ FixMessage::ENCRYPT_METHOD ] );
+        endif;
+
+
+        if ( $isResent ):
+            // IF an Admin Message: Logon, Heartbeat, etc...
+            if ( array_key_exists( $headerFields[ FixMessage::MSG_TYPE ], FixMessage::$administrativeMessageTypes ) ):
+                $headerFields[ FixMessage::MSG_TYPE ]      = FixMessage::SequenceReset;
+                $headerFields[ FixMessage::GAP_FILL_FLAG ] = 'Y';
+                $headerFields[ FixMessage::NEW_SEQ_NO ]    = $nextNonAdminMsgSeqNum;
+            endif;
+
+            $headerFields[ FixMessage::POSS_DUP_FLAG ] = 'Y';
+        endif;
+
+
         $bodyContent = '';
         foreach ( $headerFields as $tag => $value ):
             $bodyContent .= $tag . '=' . $value . self::SOH;
@@ -452,7 +572,9 @@ class GLMXFixClient {
         $checksum    = $this->calculateCheckSum( $fullMessage );
         $fullMessage .= "10=" . $checksum . self::SOH;
 
-        $this->nextOutgoingMsgSeqNum++;
+        // This actually doesn't follow the process.
+        // I can safely delete this.
+        //$this->nextOutgoingMsgSeqNum++;
 
         return $fullMessage;
     }
@@ -505,6 +627,13 @@ class GLMXFixClient {
     }
 
 
+    public function sendLogout(): void {
+        echo "Sending Logout (5) message...\n";
+        $message = $this->generateFixMessage( FixMessage::Logout );
+        $this->sendRaw( $message );
+    }
+
+
     /**
      * @return void
      */
@@ -550,7 +679,7 @@ class GLMXFixClient {
 
         // Use stream_select to wait for data or timeout for periodic actions
         // Timeout is set to a short interval (e.g., 1 second) or remaining time till next heartbeat
-        $timeout = $this->heartBtInt - (time() - $this->lastSentActivity);
+        $timeout = $this->heartBtInt - ( time() - $this->lastSentActivity );
         if ( $timeout < 1 ) $timeout = 1; // Don't block indefinitely if heartbeat is due
 
 
@@ -590,11 +719,14 @@ class GLMXFixClient {
             $this->lastReceivedActivity = time(); // Update activity time after receiving data
         endif;
 
+
         // --- Process Parsed Messages ---
         $content = $this->parser->parseNextMessage();
 
         if ( $content ):
-            return new FixMessage( $content );
+            $FixMessage = new FixMessage( $content );
+            $this->logger->log( $FixMessage );
+            return $FixMessage;
         endif;
 
         throw new NoDataException();
@@ -613,5 +745,43 @@ class GLMXFixClient {
         if ( $this->debug ):
             echo $message . "\n";
         endif;
+    }
+
+
+    public function isLoggedIn(): bool {
+        return $this->logged_in;
+    }
+
+    public function setLoggedIn( bool $logged_in ): void {
+        $this->logged_in = $logged_in;
+    }
+
+
+    /**
+     * GLMX resets its FIX message sequence counts daily from 23:45:00 to 00:05:00 UTC.
+     * @return CarbonInterval Ex: to be used in client code as `echo $interval->forHumans();`
+     * @throws Exception
+     */
+    public static function timeUntilMessageSequenceCountReset(): CarbonInterval {
+        $start    = Carbon::now( 'UTC' );
+        $end      = Carbon::create( $start->year, $start->month, $start->day, 23, 45, 00, 'UTC' );
+        $interval = $end->diffAsCarbonInterval( $start );
+
+        return $interval;
+    }
+
+    public static function glmxIsClosed(): bool {
+        $now        = Carbon::now( 'UTC' );
+        $tomorrow   = $now->copy()->addDay();
+        $startClose = Carbon::create( $now->year, $now->month, $now->day, 23, 45, 00, 'UTC' );
+        $endClose   = Carbon::create( $tomorrow->year, $tomorrow->month, $tomorrow->day, 0, 5, 00, 'UTC' );
+
+        return $now->between( $startClose, $endClose );
+    }
+
+    public static function getCloseTimeForTimezone( string $timezone ): Carbon {
+        $now        = Carbon::now( 'UTC' );
+        $startClose = Carbon::create( $now->year, $now->month, $now->day, 23, 45, 00, 'UTC' );
+        return $startClose->timezone($timezone);
     }
 }
