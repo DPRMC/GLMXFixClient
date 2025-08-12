@@ -156,7 +156,7 @@ class GLMXFixClient {
         endif;
 
         // 5. Set the stream to non-blocking mode
-        if ( ! stream_set_blocking( $this->socket, FALSE ) ):
+        if ( !stream_set_blocking( $this->socket, FALSE ) ):
             fclose( $this->socket );
             throw new Exception( "Failed to set stream to non-blocking mode." );
         endif;
@@ -168,8 +168,9 @@ class GLMXFixClient {
     /**
      * Initiates a FIX session by sending a Logon (A) message and waiting for confirmation.
      *
-     * @param int|NULL $expectedSequenceNumber
+     * @param int|NULL  $expectedSequenceNumber
      * @param bool|NULL $resetSeqNumFlag Only use in the testing environment. See comments below around parameter usage.
+     *
      * @return float Microtime timestamp when the last message was sent during handshake, or throws exception.
      * @throws \Exception
      * @throws GenericFixMessageException
@@ -243,7 +244,7 @@ class GLMXFixClient {
                 $this->parser->appendData( $rawData );
 
 
-                while ( ( $parsedMessage = $this->parser->parseNextMessage() ) !== NULL ):
+                while ( ($parsedMessage = $this->parser->parseNextMessage()) !== NULL ):
                     $this->_debug( '--- Message Parsed During Login Handshake ---' );
 
                     $fixMessage = new FixMessage( $parsedMessage );
@@ -333,8 +334,9 @@ class GLMXFixClient {
 
     /**
      * @param Carbon $date The UTC date of messages that need to be resent.
-     * @param int $startMsgSeqNum
-     * @param int $endMsgSeqNum
+     * @param int    $startMsgSeqNum
+     * @param int    $endMsgSeqNum
+     *
      * @return void
      * @throws Exception
      *
@@ -400,7 +402,7 @@ class GLMXFixClient {
      * @throws \Exception
      */
     protected function sendRaw( string $message ): int|false {
-        if ( ! $this->socket ):
+        if ( !$this->socket ):
             throw new Exception( "Socket not connected." );
         endif;
         $bytesWritten = @fwrite( $this->socket, $message );
@@ -426,7 +428,7 @@ class GLMXFixClient {
      * @throws SocketNotConnectedException
      */
     public function readRaw( int $length = 2048 ): string|false {
-        if ( ! $this->socket ):
+        if ( !$this->socket ):
             throw new SocketNotConnectedException();
         endif;
         $data = @fread( $this->socket, $length );
@@ -460,7 +462,7 @@ class GLMXFixClient {
         for ( $i = 0; $i < strlen( $message ); $i++ ):
             $sum += ord( $message[ $i ] );
         endfor;
-        return str_pad( (string)( $sum % 256 ), 3, '0', STR_PAD_LEFT );
+        return str_pad( (string)($sum % 256), 3, '0', STR_PAD_LEFT );
     }
 
 
@@ -482,8 +484,8 @@ class GLMXFixClient {
     /**
      * Generates a complete FIX message string.
      *
-     * @param string $msgType The MsgType (tag 35).
-     * @param array<string, string> $fields An associative array of FIX tags and their values (excluding header and trailer).
+     * @param string                $msgType The MsgType (tag 35).
+     * @param array<string, string> $fields  An associative array of FIX tags and their values (excluding header and trailer).
      *
      * @return string The complete FIX message.
      */
@@ -679,7 +681,7 @@ class GLMXFixClient {
 
         // Use stream_select to wait for data or timeout for periodic actions
         // Timeout is set to a short interval (e.g., 1 second) or remaining time till next heartbeat
-        $timeout = $this->heartBtInt - ( time() - $this->lastSentActivity );
+        $timeout = $this->heartBtInt - (time() - $this->lastSentActivity);
         if ( $timeout < 1 ) $timeout = 1; // Don't block indefinitely if heartbeat is due
 
 
@@ -733,7 +735,7 @@ class GLMXFixClient {
     }
 
 
-    public function setDebug( bool $debug ) {
+    public function setDebug( bool $debug ): void {
         $this->debug = $debug;
     }
 
@@ -759,6 +761,7 @@ class GLMXFixClient {
 
     /**
      * GLMX resets its FIX message sequence counts daily from 23:45:00 to 00:05:00 UTC.
+     *
      * @return CarbonInterval Ex: to be used in client code as `echo $interval->forHumans();`
      * @throws Exception
      */
@@ -782,6 +785,6 @@ class GLMXFixClient {
     public static function getCloseTimeForTimezone( string $timezone ): Carbon {
         $now        = Carbon::now( 'UTC' );
         $startClose = Carbon::create( $now->year, $now->month, $now->day, 23, 45, 00, 'UTC' );
-        return $startClose->timezone($timezone);
+        return $startClose->timezone( $timezone );
     }
 }
