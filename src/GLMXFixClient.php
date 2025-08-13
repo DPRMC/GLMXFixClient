@@ -396,7 +396,7 @@ class GLMXFixClient {
 
             endforeach;
             //$this->_debug( "Returning without ACTUALLY resending the messages." );
-            //return;
+            // return;
         endif;
 
         foreach ( $stringMessagesToBeResent as $string ):
@@ -842,7 +842,7 @@ class GLMXFixClient {
             endif;
 
             if ( $foundCurrentMsg && !$isAdmin && $msgSeqNum > $currentMsgSeqNum ):
-                return $msgSeqNum;
+                return $msgSeqNum + 1;
             endif;
         endforeach;
 
