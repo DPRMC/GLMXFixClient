@@ -374,7 +374,9 @@ class GLMXFixClient {
             try {
                 $nextNonAdminMsgSeqNum = self::getNextNonAdminMsgSeqNum( $adminMessageFlags, $msgSeqNum );
             } catch ( Exception $e ) {
-                $nextNonAdminMsgSeqNum = array_key_last( $adminMessageFlags );
+                // There were no NON admin messages, so take the last message seq num, and add 1.
+                // As per the FIX protocol guidelines.
+                $nextNonAdminMsgSeqNum = array_key_last( $adminMessageFlags ) + 1;
             }
 
 
