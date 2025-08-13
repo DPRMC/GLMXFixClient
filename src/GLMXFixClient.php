@@ -533,7 +533,8 @@ class GLMXFixClient {
                     $headerFields[ $tag ] = $msgType;
                     break;
                 case FixMessage::MSG_SEQ_NUM:
-                    $this->lastMsgSeqNum         = $this->messageSequenceNumberManager->getLastMessageSequenceNumber();
+                    //$this->lastMsgSeqNum         = $this->messageSequenceNumberManager->getLastMessageSequenceNumber();
+                    $this->lastMsgSeqNum         = $this->messageSequenceNumberManager->getLastOutgoingMessageSequenceNumber();
                     $this->nextOutgoingMsgSeqNum = $this->lastMsgSeqNum + 1;
                     $headerFields[ $tag ]        = (string)$this->nextOutgoingMsgSeqNum;
 
