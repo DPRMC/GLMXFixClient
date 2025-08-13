@@ -371,13 +371,11 @@ class GLMXFixClient {
         foreach ( $fixMessagesToResend as $msgSeqNum => $arrayFixMessage ):
 
 
-
             try {
                 $nextNonAdminMsgSeqNum = self::getNextNonAdminMsgSeqNum( $adminMessageFlags, $msgSeqNum );
             } catch ( Exception $e ) {
-                $nextNonAdminMsgSeqNum = array_key_last($adminMessageFlags);
+                $nextNonAdminMsgSeqNum = array_key_last( $adminMessageFlags );
             }
-
 
 
             $stringMessage                          = $this->generateFixMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ],
@@ -579,8 +577,10 @@ class GLMXFixClient {
                 $headerFields[ FixMessage::MSG_TYPE ]      = FixMessage::SequenceReset;
                 $headerFields[ FixMessage::GAP_FILL_FLAG ] = 'Y';
                 $headerFields[ FixMessage::NEW_SEQ_NO ]    = $nextNonAdminMsgSeqNum;
-
             endif;
+
+            // Needs to be reset here, or SendingTime accuracy problem will be the reason for the REJECT message
+            $headerFields[ FixMessage::SENDING_TIME ]  = gmdate( 'Ymd-H:i:s.v' );
 
             $headerFields[ FixMessage::POSS_DUP_FLAG ] = 'Y';
         endif;
