@@ -395,8 +395,8 @@ class GLMXFixClient {
                 $this->_debug( $msgSeqNum . ": " . str_replace( self::SOH, '   ', $string ) );
 
             endforeach;
-            $this->_debug( "Returning without ACTUALLY resending the messages." );
-            return;
+            //$this->_debug( "Returning without ACTUALLY resending the messages." );
+            //return;
         endif;
 
         foreach ( $stringMessagesToBeResent as $string ):
