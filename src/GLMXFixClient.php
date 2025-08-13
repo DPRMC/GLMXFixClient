@@ -348,6 +348,10 @@ class GLMXFixClient {
     public function sendResendRequestResponses( Carbon $date, int $startMsgSeqNum, int $endMsgSeqNum = 0 ): void {
         $fixMessagesToResend = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums( $date, $startMsgSeqNum, $endMsgSeqNum, -1 );
 
+        dd($fixMessagesToResend);
+
+        // Administrative messages need to be munged.
+        // Create a map of which Messages are ADMINISTRATIVE Messages here.
         $adminMessageFlags = [];
         foreach ( $fixMessagesToResend as $message ):
             if ( array_key_exists( $message[ FixMessage::MSG_TYPE ], FixMessage::$administrativeMessageTypes ) ):
@@ -363,16 +367,32 @@ class GLMXFixClient {
         /**
          * @var array $arrayFixMessage
          */
-        foreach ( $fixMessagesToResend as $arrayFixMessage ):
-            $stringMessage              = $this->generateFixMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ], $arrayFixMessage );
-            $stringMessagesToBeResent[] = $stringMessage;
+        foreach ( $fixMessagesToResend as $msgSeqNum => $arrayFixMessage ):
+
+            dd($adminMessageFlags);
+
+            try {
+                $nextNonAdminMsgSeqNum = self::getNextNonAdminMsgSeqNum( $adminMessageFlags, $msgSeqNum );
+            } catch ( Exception $e ) {
+                $nextNonAdminMsgSeqNum = array_key_last($adminMessageFlags);
+            }
+
+
+
+            $stringMessage                          = $this->generateFixMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ],
+                                                                                 $arrayFixMessage,
+                                                                                 $msgSeqNum,
+                                                                                 $nextNonAdminMsgSeqNum );
+            $msgSeqNum                              = $arrayFixMessage[ FixMessage::MSG_SEQ_NUM ];
+            $stringMessagesToBeResent[ $msgSeqNum ] = $stringMessage;
         endforeach;
 
 
         if ( $this->debug ):
             $this->_debug( "There are " . count( $stringMessagesToBeResent ) . " messages sent to resend requests." );
-            foreach ( $stringMessagesToBeResent as $string ):
-                $this->_debug( $string );
+            foreach ( $stringMessagesToBeResent as $msgSeqNum => $string ):
+                $this->_debug( $msgSeqNum . ": " . str_replace( self::SOH, '   ', $string ) );
+
             endforeach;
             $this->_debug( "Returning without ACTUALLY resending the messages." );
             return;
@@ -489,7 +509,10 @@ class GLMXFixClient {
      *
      * @return string The complete FIX message.
      */
-    protected function generateFixMessage( string $msgType, array $fields = [], bool $isResent = FALSE, $nextNonAdminMsgSeqNum = NULL ): string {
+    protected function generateFixMessage( string $msgType,
+                                           array  $fields = [],
+                                           int    $msgSeqNumForResent = NULL,
+                                           int    $nextNonAdminMsgSeqNum = NULL ): string {
         // Standard FIX header field order (relevant for MsgType 'A' to 'Z' excluding '8' and '9' which are inserted dynamically)
         // See: https://www.fixtrading.org/standards/tagvalue-online/
         $standardHeaderOrder = [
@@ -513,6 +536,7 @@ class GLMXFixClient {
                     $this->lastMsgSeqNum         = $this->messageSequenceNumberManager->getLastMessageSequenceNumber();
                     $this->nextOutgoingMsgSeqNum = $this->lastMsgSeqNum + 1;
                     $headerFields[ $tag ]        = (string)$this->nextOutgoingMsgSeqNum;
+
                     break;
                 case FixMessage::SENDER_COMP_ID:
                     $headerFields[ $tag ] = $this->senderCompID;
@@ -536,6 +560,30 @@ class GLMXFixClient {
         endforeach;
 
 
+        // Setting of fields for RESENT messages.
+        if ( $msgSeqNumForResent ):
+            // IF an Admin Message: Logon, Heartbeat, etc...
+            if ( array_key_exists( $headerFields[ FixMessage::MSG_TYPE ], FixMessage::$administrativeMessageTypes ) ):
+
+                // UNSET any fields that are not necessary for a gap fill message.
+                foreach ( $headerFields as $tag => $value ):
+                    if ( !in_array( $tag, $standardHeaderOrder ) ):
+                        unset( $headerFields[ $tag ] );
+                    endif;
+                endforeach;
+
+                // Now add the ones we actually do need.
+                $headerFields[ FixMessage::MSG_SEQ_NUM ]   = (string)$msgSeqNumForResent;
+                $headerFields[ FixMessage::MSG_TYPE ]      = FixMessage::SequenceReset;
+                $headerFields[ FixMessage::GAP_FILL_FLAG ] = 'Y';
+                $headerFields[ FixMessage::NEW_SEQ_NO ]    = $nextNonAdminMsgSeqNum;
+
+            endif;
+
+            $headerFields[ FixMessage::POSS_DUP_FLAG ] = 'Y';
+        endif;
+
+        // The following unset() calls MUST go below the setting of fields for resent messages.
         // No need to send the password if this is not a Logon message.
         if ( $msgType != FixMessage::Logon ):
             unset( $headerFields[ FixMessage::PASSWORD ] );
@@ -544,18 +592,6 @@ class GLMXFixClient {
         // This tag is not defined for the logout message.
         if ( $msgType == FixMessage::Logout ):
             unset( $headerFields[ FixMessage::ENCRYPT_METHOD ] );
-        endif;
-
-
-        if ( $isResent ):
-            // IF an Admin Message: Logon, Heartbeat, etc...
-            if ( array_key_exists( $headerFields[ FixMessage::MSG_TYPE ], FixMessage::$administrativeMessageTypes ) ):
-                $headerFields[ FixMessage::MSG_TYPE ]      = FixMessage::SequenceReset;
-                $headerFields[ FixMessage::GAP_FILL_FLAG ] = 'Y';
-                $headerFields[ FixMessage::NEW_SEQ_NO ]    = $nextNonAdminMsgSeqNum;
-            endif;
-
-            $headerFields[ FixMessage::POSS_DUP_FLAG ] = 'Y';
         endif;
 
 
@@ -786,5 +822,33 @@ class GLMXFixClient {
         $now        = Carbon::now( 'UTC' );
         $startClose = Carbon::create( $now->year, $now->month, $now->day, 23, 45, 00, 'UTC' );
         return $startClose->timezone( $timezone );
+    }
+
+
+    /**
+     * @param array $adminMessageMap
+     * @param int   $currentMsgSeqNum
+     *
+     * @return int
+     * @throws \Exception
+     */
+    protected static function getNextNonAdminMsgSeqNum( array $adminMessageMap, int $currentMsgSeqNum ): int {
+        $foundCurrentMsg = FALSE;
+        foreach ( $adminMessageMap as $msgSeqNum => $isAdmin ):
+            if ( $msgSeqNum === $currentMsgSeqNum ):
+                $foundCurrentMsg = TRUE;
+            endif;
+
+            if ( $foundCurrentMsg && !$isAdmin && $msgSeqNum > $currentMsgSeqNum ):
+                return $msgSeqNum;
+            endif;
+        endforeach;
+
+        if ( !$foundCurrentMsg ):
+            throw new Exception( "Starting message sequence number not found." );
+        endif;
+
+        throw new Exception( "No non-admin messages found after the starting message sequence number." );
+
     }
 }
