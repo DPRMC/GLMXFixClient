@@ -346,18 +346,19 @@ class GLMXFixClient {
      * All such messages should have PossDupFlag (43) set to “Y” as well.
      */
     public function sendResendRequestResponses( Carbon $date, int $startMsgSeqNum, int $endMsgSeqNum = 0 ): void {
-        $fixMessagesToResend = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums( $date, $startMsgSeqNum, $endMsgSeqNum, -1 );
-
-        dd($fixMessagesToResend);
+        $fixMessagesToResend = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums( $date,
+                                                                                          $startMsgSeqNum,
+                                                                                          $endMsgSeqNum,
+                                                                                          -1 );
 
         // Administrative messages need to be munged.
         // Create a map of which Messages are ADMINISTRATIVE Messages here.
         $adminMessageFlags = [];
-        foreach ( $fixMessagesToResend as $message ):
+        foreach ( $fixMessagesToResend as $msgSeqNum => $message ):
             if ( array_key_exists( $message[ FixMessage::MSG_TYPE ], FixMessage::$administrativeMessageTypes ) ):
-                $adminMessageFlags[ FixMessage::MSG_SEQ_NUM ] = 1;
+                $adminMessageFlags[ $msgSeqNum ] = 1;
             else:
-                $adminMessageFlags[ FixMessage::MSG_SEQ_NUM ] = 0;
+                $adminMessageFlags[ $msgSeqNum ] = 0;
             endif;
         endforeach;
 
@@ -369,7 +370,7 @@ class GLMXFixClient {
          */
         foreach ( $fixMessagesToResend as $msgSeqNum => $arrayFixMessage ):
 
-            dd($adminMessageFlags);
+
 
             try {
                 $nextNonAdminMsgSeqNum = self::getNextNonAdminMsgSeqNum( $adminMessageFlags, $msgSeqNum );
