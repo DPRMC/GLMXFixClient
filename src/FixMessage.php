@@ -257,6 +257,8 @@ class FixMessage {
     const GLMX_QUOTE_SIZE            = 5035;
     const GLMX_QUOTE_HAIRCUT         = 5036;
     const GLMX_QUOTE_AIP             = 5037;
+
+    const TRADE_LINK_ID = 820;
     const TRD_TYPE                   = 828;
     const GLMX_INDEX_TYPE            = 5053;
     const ADJUSTED_END_CASH          = 6379;
