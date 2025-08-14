@@ -598,6 +598,11 @@ class GLMXFixClient {
             unset( $headerFields[ FixMessage::ENCRYPT_METHOD ] );
         endif;
 
+        // This tag is not defined for the heartbeat message.
+        if ( $msgType == FixMessage::Heartbeat ):
+            unset( $headerFields[ FixMessage::ENCRYPT_METHOD ] );
+        endif;
+
 
         $bodyContent = '';
         foreach ( $headerFields as $tag => $value ):
