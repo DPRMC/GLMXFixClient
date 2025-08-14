@@ -117,6 +117,8 @@ class FixMessage {
     const BENCHMARK_CURVE_NAME     = 221;
     const BENCHMARK_CURVE_POINT    = 222;
     const MARGIN_RATIO             = 898;
+
+    const GLMX_TRADE_TYPE          = 5001;
     const HAIRCUT_FORMULA          = 5002;
     const GC_TYPE                  = 5006;
     const GLMX_DEAL_TYPE           = 5052;
