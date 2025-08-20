@@ -309,6 +309,8 @@ class FixMessage {
     //const SESSION_REJECT_REASON = 371;
     const REF_TAG_ID = 371;
 
+    const REF_TRADE = 233;
+
     public function __construct( array $content = [] ) {
         $this->content = $content;
     }
