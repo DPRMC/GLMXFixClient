@@ -698,6 +698,13 @@ class GLMXFixClient {
     }
 
 
+    public function sendSequenceReset(): void {
+        echo "Sending SequenceReset (4) message...\n";
+        $message = $this->generateFixMessage( FixMessage::SequenceReset );
+        $this->sendRaw( $message );
+    }
+
+
     /**
      * @return void
      */
