@@ -351,7 +351,6 @@ class GLMXFixClient {
      */
     public function sendResendRequestResponses( Carbon $date, int $startMsgSeqNum, int $endMsgSeqNum = 0 ): void {
 
-        $this->debug = TRUE;
         $fixMessagesToResend = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums( $date,
                                                                                           $startMsgSeqNum,
                                                                                           $endMsgSeqNum,
@@ -516,6 +515,8 @@ class GLMXFixClient {
             // Add other standard header fields here if needed, in their numerical order
         ];
         $headerFields        = [];
+
+        return '';
     }
 
     /**
