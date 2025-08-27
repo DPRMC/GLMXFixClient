@@ -9,6 +9,7 @@ use DPRMC\GLMXFixClient\Exceptions\ConnectionClosedByPeerException;
 use DPRMC\GLMXFixClient\Exceptions\GenericFixMessageException;
 use DPRMC\GLMXFixClient\Exceptions\MsgSeqNumTooLowException;
 use DPRMC\GLMXFixClient\Exceptions\NoDataException;
+use DPRMC\GLMXFixClient\Exceptions\NumberOfMessagesToBeResentIsSuspiciouslyHighException;
 use DPRMC\GLMXFixClient\Exceptions\ParseException;
 use DPRMC\GLMXFixClient\Exceptions\SocketNotConnectedException;
 use DPRMC\GLMXFixClient\Exceptions\StreamSelectException;
@@ -59,6 +60,8 @@ class GLMXFixClient {
     protected MessageSequenceNumberManagerInterface $messageSequenceNumberManager;
 
     protected FixMessageRepositoryInterface $fixMessageRepository;
+
+    const MAX_RESEND_MESSAGES = 5;
 
     public function __construct( LogInterface                          $logger,
                                  MessageSequenceNumberManagerInterface $msgSeqNumManager,
@@ -339,6 +342,7 @@ class GLMXFixClient {
      *
      * @return void
      * @throws Exception
+     * @throws \DPRMC\GLMXFixClient\Exceptions\NumberOfMessagesToBeResentIsSuspiciouslyHighException
      *
      * Any administrative messages are replaced with Sequence Reset (4) messages that
      * - have a GapFillFlag (123) field set to “Y”, indicating
@@ -346,10 +350,22 @@ class GLMXFixClient {
      * All such messages should have PossDupFlag (43) set to “Y” as well.
      */
     public function sendResendRequestResponses( Carbon $date, int $startMsgSeqNum, int $endMsgSeqNum = 0 ): void {
+
+        $this->debug = TRUE;
         $fixMessagesToResend = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums( $date,
                                                                                           $startMsgSeqNum,
                                                                                           $endMsgSeqNum,
                                                                                           -1 );
+
+        $this->_debug( "There are " . count( $fixMessagesToResend ) . " messages to resend." );
+
+
+        //
+        if( count( $fixMessagesToResend ) > self::MAX_RESEND_MESSAGES ):
+            throw new NumberOfMessagesToBeResentIsSuspiciouslyHighException($fixMessagesToResend);
+        endif;
+
+
 
         // Administrative messages need to be munged.
         // Create a map of which Messages are ADMINISTRATIVE Messages here.
@@ -395,8 +411,8 @@ class GLMXFixClient {
                 $this->_debug( $msgSeqNum . ": " . str_replace( self::SOH, '   ', $string ) );
 
             endforeach;
-            //$this->_debug( "Returning without ACTUALLY resending the messages." );
-            // return;
+            $this->_debug( "Returning without ACTUALLY resending the messages." );
+            return;
         endif;
 
         foreach ( $stringMessagesToBeResent as $string ):
