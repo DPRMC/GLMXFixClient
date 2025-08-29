@@ -327,6 +327,10 @@ class FixMessage {
         return in_array( $this->getMessageType(), self::$administrativeMessageTypes );
     }
 
+    public static function isAdministrativeMessage( string $messageType ): bool {
+        return in_array( $messageType, self::$administrativeMessageTypes );
+    }
+
 
     public function getContent(): array {
         return $this->content;
