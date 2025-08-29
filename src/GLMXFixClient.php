@@ -351,25 +351,27 @@ class GLMXFixClient {
      */
     public function sendResendRequestResponses( Carbon $date, int $startMsgSeqNum, int $endMsgSeqNum = 0 ): void {
 
-        $fixMessagesToResend = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums( $date,
-                                                                                          $startMsgSeqNum,
-                                                                                          $endMsgSeqNum,
-                                                                                          -1 );
+        $fixMessagesOfInterest = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums( $date,
+                                                                                            $startMsgSeqNum,
+                                                                                            $endMsgSeqNum,
+                                                                                            -1 );
 
-        $this->_debug( "There are " . count( $fixMessagesToResend ) . " messages to resend." );
+        $numFixMessagesOfInterest = count( $fixMessagesOfInterest );
+
+        $this->_debug( "There are " . $numFixMessagesOfInterest . " messages to resend." );
 
 
-        //
-        if( count( $fixMessagesToResend ) > self::MAX_RESEND_MESSAGES ):
-            throw new NumberOfMessagesToBeResentIsSuspiciouslyHighException($fixMessagesToResend);
-        endif;
+        // UNCOMMENT WHEN LIVE...
+        //if( count( $fixMessagesToResend ) > self::MAX_RESEND_MESSAGES ):
+        //    throw new NumberOfMessagesToBeResentIsSuspiciouslyHighException($fixMessagesToResend);
+        //endif;
 
 
 
         // Administrative messages need to be munged.
         // Create a map of which Messages are ADMINISTRATIVE Messages here.
         $adminMessageFlags = [];
-        foreach ( $fixMessagesToResend as $msgSeqNum => $message ):
+        foreach ( $fixMessagesOfInterest as $msgSeqNum => $message ):
             if ( array_key_exists( $message[ FixMessage::MSG_TYPE ], FixMessage::$administrativeMessageTypes ) ):
                 $adminMessageFlags[ $msgSeqNum ] = 1;
             else:
@@ -378,29 +380,39 @@ class GLMXFixClient {
         endforeach;
 
 
+
+        $isFirstMessage = TRUE;
         $stringMessagesToBeResent = [];
 
         /**
          * @var array $arrayFixMessage
          */
-        foreach ( $fixMessagesToResend as $msgSeqNum => $arrayFixMessage ):
+        foreach ( $fixMessagesOfInterest as $msgSeqNum => $arrayFixMessage ):
 
 
             try {
                 $nextNonAdminMsgSeqNum = self::getNextNonAdminMsgSeqNum( $adminMessageFlags, $msgSeqNum );
+
+
             } catch ( Exception $e ) {
                 // There were no NON admin messages, so take the last message seq num, and add 1.
                 // As per the FIX protocol guidelines.
                 $nextNonAdminMsgSeqNum = array_key_last( $adminMessageFlags ) + 1;
             }
 
+            if( FixMessage::isAdministrativeMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ] ) || $isFirstMessage):
+                $stringMessage                          = $this->generateFixMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ],
+                                                                                     $arrayFixMessage,
+                                                                                     $msgSeqNum,
+                                                                                     $nextNonAdminMsgSeqNum );
+                $msgSeqNum                              = $arrayFixMessage[ FixMessage::MSG_SEQ_NUM ];
+                $stringMessagesToBeResent[ $msgSeqNum ] = $stringMessage;
+            else:
+                // Don't add to the list to be resent.
+            endif;
 
-            $stringMessage                          = $this->generateFixMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ],
-                                                                                 $arrayFixMessage,
-                                                                                 $msgSeqNum,
-                                                                                 $nextNonAdminMsgSeqNum );
-            $msgSeqNum                              = $arrayFixMessage[ FixMessage::MSG_SEQ_NUM ];
-            $stringMessagesToBeResent[ $msgSeqNum ] = $stringMessage;
+
+            $isFirstMessage = FALSE;
         endforeach;
 
 
@@ -413,6 +425,8 @@ class GLMXFixClient {
             $this->_debug( "Returning without ACTUALLY resending the messages." );
             return;
         endif;
+
+
 
         foreach ( $stringMessagesToBeResent as $string ):
             $this->sendRaw( $string );
