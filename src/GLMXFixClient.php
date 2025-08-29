@@ -400,7 +400,7 @@ class GLMXFixClient {
                 $nextNonAdminMsgSeqNum = array_key_last( $adminMessageFlags ) + 1;
             }
 
-            if( FixMessage::isAdministrativeMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ] ) || $isFirstMessage):
+            if( !FixMessage::isAdministrativeMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ] ) || $isFirstMessage):
                 $stringMessage                          = $this->generateFixMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ],
                                                                                      $arrayFixMessage,
                                                                                      $msgSeqNum,
@@ -422,13 +422,16 @@ class GLMXFixClient {
                 $this->_debug( $msgSeqNum . ": " . str_replace( self::SOH, '   ', $string ) );
 
             endforeach;
-            $this->_debug( "Returning without ACTUALLY resending the messages." );
+
             return;
         endif;
 
 
+        $this->_debug( "There are " . count( $stringMessagesToBeResent ) . " messages sent to resend requests." );
+
 
         foreach ( $stringMessagesToBeResent as $string ):
+            $this->_debug( "Sending resend request for message with MsgSeqNum: " . $string[ FixMessage::MSG_SEQ_NUM ] );
             $this->sendRaw( $string );
         endforeach;
     }
