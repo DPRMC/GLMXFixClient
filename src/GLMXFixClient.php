@@ -367,7 +367,6 @@ class GLMXFixClient {
         //endif;
 
 
-
         // Administrative messages need to be munged.
         // Create a map of which Messages are ADMINISTRATIVE Messages here.
         $adminMessageFlags = [];
@@ -380,8 +379,7 @@ class GLMXFixClient {
         endforeach;
 
 
-
-        $isFirstMessage = TRUE;
+        $isFirstMessage           = TRUE;
         $stringMessagesToBeResent = [];
 
         /**
@@ -400,7 +398,10 @@ class GLMXFixClient {
                 $nextNonAdminMsgSeqNum = array_key_last( $adminMessageFlags ) + 1;
             }
 
-            if( !FixMessage::isAdministrativeMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ] ) || $isFirstMessage):
+            dump( $arrayFixMessage[ FixMessage::MSG_TYPE ] );
+            dump( FixMessage::$administrativeMessageTypes );
+
+            if ( !FixMessage::isAdministrativeMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ] ) || $isFirstMessage ):
                 $stringMessage                          = $this->generateFixMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ],
                                                                                      $arrayFixMessage,
                                                                                      $msgSeqNum,
@@ -429,6 +430,7 @@ class GLMXFixClient {
 
         $this->_debug( "There are " . count( $stringMessagesToBeResent ) . " messages sent to resend requests." );
 
+        dd( 'etstfsfsdd' );
 
         foreach ( $stringMessagesToBeResent as $string ):
             $this->_debug( "Sending resend request for message with MsgSeqNum: " . $string[ FixMessage::MSG_SEQ_NUM ] );
@@ -616,7 +618,7 @@ class GLMXFixClient {
             endif;
 
             // Needs to be reset here, or SendingTime accuracy problem will be the reason for the REJECT message
-            $headerFields[ FixMessage::SENDING_TIME ]  = gmdate( 'Ymd-H:i:s.v' );
+            $headerFields[ FixMessage::SENDING_TIME ] = gmdate( 'Ymd-H:i:s.v' );
 
             $headerFields[ FixMessage::POSS_DUP_FLAG ] = 'Y';
         endif;
@@ -708,10 +710,37 @@ class GLMXFixClient {
     }
 
 
+    /**
+     * @return void
+     * @throws \DPRMC\GLMXFixClient\Exceptions\ClientNotRunningException
+     * @throws \DPRMC\GLMXFixClient\Exceptions\StreamSelectException
+     */
     public function sendLogout(): void {
-        echo "Sending Logout (5) message...\n";
+        $this->_debug( "Sending Logout (5) message..." );;
         $message = $this->generateFixMessage( FixMessage::Logout );
         $this->sendRaw( $message );
+
+        $this->_debug("Now waiting for the Logout message to be received...");;
+        while ( $this->isRunning() ):
+            /**
+             * @var FixMessage $fixMessage
+             */
+            try {
+                $fixMessage = $this->getMessage();
+                $this->_debug( "Received a message: " . $fixMessage->getMessageType() );
+                $this->disconnect();
+                $this->setRunning( FALSE );
+                $this->setLoggedIn( FALSE );
+                return;
+            } catch ( ClientNotRunningException $e ) {
+                throw $e;
+            } catch ( NoDataException $e ) {
+                $this->_debug( "." );
+                sleep( 1 );
+            } catch ( StreamSelectException $e ) {
+                throw $e;
+            }
+        endwhile;
     }
 
 
