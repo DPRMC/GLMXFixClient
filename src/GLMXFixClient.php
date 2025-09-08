@@ -136,8 +136,8 @@ class GLMXFixClient {
         // 2. Create a stream context with SSL/TLS options
         $contextOptions = [
             'ssl' => [
-                'verify_peer'      => TRUE,
-                'verify_peer_name' => TRUE,
+                'verify_peer'      => false,
+                'verify_peer_name' => false,
                 'crypto_method'    => STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT,
             ],
         ];

@@ -8,5 +8,5 @@ interface LogInterface {
 
     public function logRaw( string $message );
 
-    public function log( FixMessage $fixMessage );
+    public function log( FixMessage $fixMessage, array $meta = [] );
 }

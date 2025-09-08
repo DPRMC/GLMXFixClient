@@ -13,7 +13,8 @@ class DebugLogger implements LogInterface {
         echo $message . "\n";
     }
 
-    public function log( FixMessage $fixMessage ) {
+    public function log( FixMessage $fixMessage, array $meta = [] ) {
         print_r($fixMessage);
+        print_r($meta);
     }
 }
