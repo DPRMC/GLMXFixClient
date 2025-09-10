@@ -10,12 +10,12 @@ class FixMessage {
 
     // FIX Session Level Messages
     const Logon         = 'A';
-    const Logout        = '5';
-    const Heartbeat     = '0';
-    const TestRequest   = '1';
-    const ResendRequest = '2';
-    const Reject        = '3';
-    const SequenceReset = '4';
+    const Logout        = 5;
+    const Heartbeat     = 0;
+    const TestRequest   = 1;
+    const ResendRequest = 2;
+    const Reject        = 3;
+    const SequenceReset = 4;
 
 
     // FIX Application Level Messages
@@ -328,7 +328,7 @@ class FixMessage {
     }
 
     public static function isAdministrativeMessage( string $messageType ): bool {
-        return in_array( $messageType, self::$administrativeMessageTypes );
+        return array_key_exists( $messageType, self::$administrativeMessageTypes );
     }
 
 

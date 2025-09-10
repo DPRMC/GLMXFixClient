@@ -389,16 +389,14 @@ class GLMXFixClient {
          */
         foreach ( $fixMessagesOfInterest as $msgSeqNum => $arrayFixMessage ):
 
-
             try {
                 $nextNonAdminMsgSeqNum = self::getNextNonAdminMsgSeqNum( $adminMessageFlags, $msgSeqNum );
-
-
             } catch ( Exception $e ) {
                 // There were no NON admin messages, so take the last message seq num, and add 1.
                 // As per the FIX protocol guidelines.
                 $nextNonAdminMsgSeqNum = array_key_last( $adminMessageFlags ) + 1;
             }
+            //$this->_debug( "NEXT NON ADMIN MSG SEQ NUM: " . $nextNonAdminMsgSeqNum );
 
 
             if ( !FixMessage::isAdministrativeMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ] ) || $isFirstMessage ):
@@ -408,12 +406,18 @@ class GLMXFixClient {
                                                                                      $nextNonAdminMsgSeqNum );
                 $msgSeqNum                              = $arrayFixMessage[ FixMessage::MSG_SEQ_NUM ];
                 $stringMessagesToBeResent[ $msgSeqNum ] = $stringMessage;
-                $this->_debug( "Sending resend request for message with MsgSeqNum: " . $msgSeqNum );
+
+                if( $isFirstMessage ):
+                    $this->_debug( "First message in series with MsgSeqNum: " . $arrayFixMessage[ FixMessage::MSG_SEQ_NUM ]  );
+                else:
+                    $this->_debug( "NON ADMIN MESSAGE: " . $msgSeqNum . " and MSG_TYPE: " . $arrayFixMessage[ FixMessage::MSG_TYPE ] );
+                endif;
+
+
             else:
                 // Don't add to the list to be resent.
-                $this->_debug( "Skipping message with MsgSeqNum: " . $arrayFixMessage[ FixMessage::MSG_SEQ_NUM ] . " as it is an administrative message." );
+                $this->_debug( "Skip ADMIN MESSAGE message with MsgSeqNum: " . $arrayFixMessage[ FixMessage::MSG_SEQ_NUM ] . " " . $arrayFixMessage[ FixMessage::MSG_TYPE ]  );
             endif;
-
 
             $isFirstMessage = FALSE;
         endforeach;
@@ -424,13 +428,10 @@ class GLMXFixClient {
             foreach ( $stringMessagesToBeResent as $msgSeqNum => $string ):
                 $this->_debug( $msgSeqNum . ": " . str_replace( self::SOH, '   ', $string ) );
             endforeach;
-
-            return;
         endif;
 
-
         foreach ( $stringMessagesToBeResent as $string ):
-            $this->_debug( "Sending resend request for message with MsgSeqNum: " . $string[ FixMessage::MSG_SEQ_NUM ] );
+            $this->_debug( "SENDING resend request for message with MsgSeqNum: " . $arrayFixMessage[ FixMessage::MSG_SEQ_NUM ] );
             $this->sendRaw( $string );
         endforeach;
     }
@@ -547,19 +548,24 @@ class GLMXFixClient {
                                            array  $fields = [],
                                            int    $msgSeqNumForResent = NULL,
                                            int    $nextNonAdminMsgSeqNum = NULL ): string {
+
         // Standard FIX header field order (relevant for MsgType 'A' to 'Z' excluding '8' and '9' which are inserted dynamically)
         // See: https://www.fixtrading.org/standards/tagvalue-online/
         $standardHeaderOrder = [
-            '35', // MsgType
-            '34', // MsgSeqNum
-            '49', // SenderCompID
-            '52', // SendingTime
-            '56', // TargetCompID
-            '98', // EncryptMethod (added as per GLMX admin feedback)
+            FixMessage::MSG_TYPE, // MsgType
+            FixMessage::MSG_SEQ_NUM, // MsgSeqNum
+            FixMessage::SENDER_COMP_ID, // SenderCompID
+            FixMessage::SENDING_TIME, // SendingTime
+            FixMessage::TARGET_COMP_ID, // TargetCompID
+            FixMessage::POSS_DUP_FLAG, // PossDupFlag
+            FixMessage::ENCRYPT_METHOD, // EncryptMethod (added as per GLMX admin feedback)
+
             // Add other standard header fields here if needed, in their numerical order
         ];
-
         $headerFields = [];
+
+
+
         foreach ( $standardHeaderOrder as $tag ):
             // Populate header fields from class properties
             switch ( $tag ):
@@ -585,8 +591,22 @@ class GLMXFixClient {
                 case FixMessage::ENCRYPT_METHOD:
                     $headerFields[ $tag ] = '0'; // Fixed value as per admin feedback
                     break;
+                // This needs to be with the headers.
+                //case FixMessage::POSS_DUP_FLAG:
+                //    if( isset($fields[ FixMessage::POSS_DUP_FLAG ]) ):
+                //
+                //    endif;
             endswitch;
         endforeach;
+
+
+        if ( $msgType == FixMessage::SequenceReset ):
+            $headerFields[ FixMessage::POSS_DUP_FLAG ] = 'Y';
+            unset( $fields[ FixMessage::POSS_DUP_FLAG ] );
+        endif;
+
+
+
 
         // Add any message-specific fields from the $fields array
         // Order of application-level fields generally doesn't matter as strictly as header fields
@@ -617,7 +637,7 @@ class GLMXFixClient {
             // Needs to be reset here, or SendingTime accuracy problem will be the reason for the REJECT message
             $headerFields[ FixMessage::SENDING_TIME ] = gmdate( 'Ymd-H:i:s.v' );
 
-            $headerFields[ FixMessage::POSS_DUP_FLAG ] = 'Y';
+            //$headerFields[ FixMessage::POSS_DUP_FLAG ] = 'Y';
         endif;
 
         // The following unset() calls MUST go below the setting of fields for resent messages.
