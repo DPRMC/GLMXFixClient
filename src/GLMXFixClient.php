@@ -9,7 +9,6 @@ use DPRMC\GLMXFixClient\Exceptions\ConnectionClosedByPeerException;
 use DPRMC\GLMXFixClient\Exceptions\GenericFixMessageException;
 use DPRMC\GLMXFixClient\Exceptions\MsgSeqNumTooLowException;
 use DPRMC\GLMXFixClient\Exceptions\NoDataException;
-use DPRMC\GLMXFixClient\Exceptions\NumberOfMessagesToBeResentIsSuspiciouslyHighException;
 use DPRMC\GLMXFixClient\Exceptions\ParseException;
 use DPRMC\GLMXFixClient\Exceptions\SocketNotConnectedException;
 use DPRMC\GLMXFixClient\Exceptions\StreamSelectException;
@@ -353,8 +352,7 @@ class GLMXFixClient {
      */
     public function sendResendRequestResponses( string $host, int $port, Carbon $date, int $startMsgSeqNum, int $endMsgSeqNum = 0 ): void {
 
-        $fixMessagesOfInterest = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums( $host,
-                                                                                            $port,
+        $fixMessagesOfInterest = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums( $host, $port,
                                                                                             $date,
                                                                                             $startMsgSeqNum,
                                                                                             $endMsgSeqNum,
@@ -402,8 +400,6 @@ class GLMXFixClient {
                 $nextNonAdminMsgSeqNum = array_key_last( $adminMessageFlags ) + 1;
             }
 
-            dump( $arrayFixMessage[ FixMessage::MSG_TYPE ] );
-            dump( FixMessage::$administrativeMessageTypes );
 
             if ( !FixMessage::isAdministrativeMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ] ) || $isFirstMessage ):
                 $stringMessage                          = $this->generateFixMessage( $arrayFixMessage[ FixMessage::MSG_TYPE ],
@@ -412,8 +408,10 @@ class GLMXFixClient {
                                                                                      $nextNonAdminMsgSeqNum );
                 $msgSeqNum                              = $arrayFixMessage[ FixMessage::MSG_SEQ_NUM ];
                 $stringMessagesToBeResent[ $msgSeqNum ] = $stringMessage;
+                $this->_debug( "Sending resend request for message with MsgSeqNum: " . $msgSeqNum );
             else:
                 // Don't add to the list to be resent.
+                $this->_debug( "Skipping message with MsgSeqNum: " . $arrayFixMessage[ FixMessage::MSG_SEQ_NUM ] . " as it is an administrative message." );
             endif;
 
 
@@ -422,19 +420,14 @@ class GLMXFixClient {
 
 
         if ( $this->debug ):
-            $this->_debug( "There are " . count( $stringMessagesToBeResent ) . " messages sent to resend requests." );
+            $this->_debug( "There are " . count( $stringMessagesToBeResent ) . " messages sent to resend requests..." );
             foreach ( $stringMessagesToBeResent as $msgSeqNum => $string ):
                 $this->_debug( $msgSeqNum . ": " . str_replace( self::SOH, '   ', $string ) );
-
             endforeach;
 
             return;
         endif;
 
-
-        $this->_debug( "There are " . count( $stringMessagesToBeResent ) . " messages sent to resend requests." );
-
-        dd( 'etstfsfsdd' );
 
         foreach ( $stringMessagesToBeResent as $string ):
             $this->_debug( "Sending resend request for message with MsgSeqNum: " . $string[ FixMessage::MSG_SEQ_NUM ] );
