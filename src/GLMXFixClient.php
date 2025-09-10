@@ -353,7 +353,8 @@ class GLMXFixClient {
      */
     public function sendResendRequestResponses( string $host, int $port, Carbon $date, int $startMsgSeqNum, int $endMsgSeqNum = 0 ): void {
 
-        $fixMessagesOfInterest = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums( $host, $port,
+        $fixMessagesOfInterest = $this->fixMessageRepository->getMessagesBetweenMsgSeqNums( $host,
+                                                                                            $port,
                                                                                             $date,
                                                                                             $startMsgSeqNum,
                                                                                             $endMsgSeqNum,
